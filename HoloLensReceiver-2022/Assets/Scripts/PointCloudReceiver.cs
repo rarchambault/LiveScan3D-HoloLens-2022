@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Playables;
 
 public class PointCloudReceiver : MonoBehaviour
 {
@@ -11,6 +13,7 @@ public class PointCloudReceiver : MonoBehaviour
 
     PointCloudRenderer pointCloudRenderer;
     bool bReadyForNextFrame = true;
+    bool bIsRenderingFrame = false;
     bool bConnected = false;
 
     // Queue to hold received frames until they can be processed on the main thread
@@ -28,8 +31,8 @@ public class PointCloudReceiver : MonoBehaviour
 
         if (bReadyForNextFrame)
         {
-            Debug.Log("Requesting frame");
             RequestFrameAsync();
+
             bReadyForNextFrame = false;
         }
 
@@ -38,8 +41,15 @@ public class PointCloudReceiver : MonoBehaviour
         {
             pointCloudRenderer.Render(frameData.vertices, frameData.colors);
             bReadyForNextFrame = true;
-            Debug.Log("Frame rendered on main thread");
         }
+    }
+
+    private IEnumerator RenderFrameAsync(float[] vertices, byte[] colors)
+    {
+        bIsRenderingFrame = true;  // Mark that we're rendering a frame
+        pointCloudRenderer.Render(vertices, colors);  // Render the frame
+        yield return new WaitForFixedUpdate();
+        bIsRenderingFrame = false;  // Mark rendering complete
     }
 
     public async void Connect(string IP)
@@ -131,7 +141,6 @@ public class PointCloudReceiver : MonoBehaviour
 
             // Enqueue the frame data to be processed on the main thread
             frameQueue.Enqueue((lVertices, lColors));
-            Debug.Log("Frame data enqueued for main thread processing");
         }
         catch (Exception e)
         {

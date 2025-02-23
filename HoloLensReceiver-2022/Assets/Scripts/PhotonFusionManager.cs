@@ -1,135 +1,110 @@
-using UnityEngine;
+using ExitGames.Client.Photon;
 using Fusion;
 using Fusion.Sockets;
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using UnityEngine.SceneManagement;
-using System.Text;
-using Fusion.Photon.Realtime;
-using ExitGames.Client.Photon;
+using UnityEngine;
 
 public class PhotonFusionManager : MonoBehaviour, INetworkRunnerCallbacks
 {
-    private NetworkRunner networkRunner;
-    private PhotonPeer photonPeer;
+    // Fusion Components
+    private NetworkRunner _networkRunner;
 
-    // App ID and Room settings
-    private string AppId = "26afa8a3-5b4b-4c88-b92a-0b3432a1de9a";
-    private string RoomName = "TestRoom";
-    private const byte TestMessageEventCode = 100; // Custom event code
+    // Event Codes
+    private const byte ChatMessageEventCode = 1;
 
     void Start()
     {
         // Initialize Fusion
-        StartFusionClient();
+        _networkRunner = FindObjectOfType<NetworkRunner>();
 
-        // Initialize PhotonPeer
-        //photonPeer = new PhotonPeer(new CustomPhotonPeerListener(), ConnectionProtocol.Udp);
-        //photonPeer.Connect("cae", AppId);
+        if (_networkRunner != null)
+        {
+            Debug.Log("Found network runner");
+        }
     }
 
     void Update()
     {
-        // Service the PhotonPeer
-        //photonPeer.Service();
     }
 
-    void StartFusionClient()
+    private void OnDestroy()
     {
-        // Create a NetworkRunner instance
-        networkRunner = gameObject.AddComponent<NetworkRunner>();
-        networkRunner.ProvideInput = true;
+    }
 
-        // Start the NetworkRunner with shared mode (Client-Server or Host)
-        var startGameArgs = new StartGameArgs()
+    public void ConnectedToServer()
+    {
+        Debug.Log("Connected to server!");
+    }
+
+    public void PlayerJoined()
+    {
+        Debug.Log("Player joined!");
+    }
+
+    public void ReliableData(NetworkRunner networkRunner, PlayerRef playerRef, ReliableKey key, ArraySegment<byte> data)
+    {
+        if (key.Equals(ReliableKey.FromInts(42, 0, 0, 0)))
         {
-            GameMode = GameMode.Client, // Join as client
-            SessionName = RoomName,    // Room name must match
-            Scene = SceneManager.GetActiveScene().buildIndex, // Use current scene
-            SceneManager = gameObject.AddComponent<NetworkSceneManagerDefault>(), // Default scene manager
-            CustomPhotonAppSettings = new AppSettings()
-            {
-                AppIdFusion = AppId,
-                AppIdRealtime = AppId,
-                FixedRegion = "cae",
-                AppVersion = "1.0",
-            }
-        };
+            Debug.Log("Received vertex data!");
+        }
+        else if (key.Equals(ReliableKey.FromInts(43, 0, 0, 0)))
+        {
+            Debug.Log("Received color data!");
+        }
 
-        networkRunner.StartGame(startGameArgs);
+        _networkRunner = networkRunner;
     }
 
-    // Fusion Callbacks
-
-    public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
+    public void ReliableProgress(NetworkRunner networkRunner, PlayerRef playerRef, ReliableKey key, float progress)
     {
-        Debug.Log($"Player {player.PlayerId} joined the room.");
+        Debug.Log("Currently receiving reliable data!");
+        _networkRunner = networkRunner;
     }
 
-    public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
+    void INetworkRunnerCallbacks.OnObjectExitAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player)
     {
-        Debug.Log($"Player {player.PlayerId} left the room.");
+        Debug.Log("Fusion object exit AOI");
     }
 
-    public void OnInput(NetworkRunner runner, NetworkInput input)
+    void INetworkRunnerCallbacks.OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player)
     {
-        // Handle player input here
+        Debug.Log("Fusion object enter AOI");
     }
 
-    public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input)
+    void INetworkRunnerCallbacks.OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
-        Debug.LogWarning($"Input missing for player {player.PlayerId}");
+        Debug.Log("Fusion player joined!");
     }
 
-    public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason)
+    void INetworkRunnerCallbacks.OnPlayerLeft(NetworkRunner runner, PlayerRef player)
     {
-        Debug.LogError($"NetworkRunner shut down due to: {shutdownReason}");
+        Debug.Log("Fusion player left!");
     }
 
-    public void OnConnectedToServer(NetworkRunner runner)
+    void INetworkRunnerCallbacks.OnInput(NetworkRunner runner, NetworkInput input)
     {
-        Debug.Log("Connected to Photon Fusion server.");
+        Debug.Log("Fusion Input received!");
     }
 
-    public void OnDisconnectedFromServer(NetworkRunner runner)
+    void INetworkRunnerCallbacks.OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input)
     {
-        Debug.LogError("Disconnected from server.");
+        throw new NotImplementedException();
     }
 
-    public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason)
+    void INetworkRunnerCallbacks.OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason)
     {
-        Debug.LogError($"Failed to connect: {reason}");
+        Debug.Log("Fusion OnShutdown called!");
     }
 
-    public void OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList)
+    void INetworkRunnerCallbacks.OnConnectedToServer(NetworkRunner runner)
     {
-        Debug.Log("Session list updated.");
+        Debug.Log("Fusion Connected to server!");
     }
 
-    public void OnCustomAuthenticationResponse(NetworkRunner runner, Dictionary<string, object> data)
+    void INetworkRunnerCallbacks.OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason)
     {
-        Debug.Log("Received custom authentication response.");
-    }
-
-    public void OnHostMigration(NetworkRunner runner, HostMigrationToken hostMigrationToken)
-    {
-        Debug.Log("Host migration occurred.");
-    }
-
-    public void OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ArraySegment<byte> data)
-    {
-        Debug.Log("Reliable data received!");
-    }
-
-    public void OnSceneLoadDone(NetworkRunner runner)
-    {
-        Debug.Log("Scene loaded.");
-    }
-
-    public void OnSceneLoadStart(NetworkRunner runner)
-    {
-        Debug.Log("Scene loading...");
+        throw new NotImplementedException();
     }
 
     void INetworkRunnerCallbacks.OnConnectRequest(NetworkRunner runner, NetworkRunnerCallbackArgs.ConnectRequest request, byte[] token)
@@ -137,7 +112,47 @@ public class PhotonFusionManager : MonoBehaviour, INetworkRunnerCallbacks
         throw new NotImplementedException();
     }
 
+    void INetworkRunnerCallbacks.OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason)
+    {
+        throw new NotImplementedException();
+    }
+
     void INetworkRunnerCallbacks.OnUserSimulationMessage(NetworkRunner runner, SimulationMessagePtr message)
+    {
+        throw new NotImplementedException();
+    }
+
+    void INetworkRunnerCallbacks.OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList)
+    {
+        throw new NotImplementedException();
+    }
+
+    void INetworkRunnerCallbacks.OnCustomAuthenticationResponse(NetworkRunner runner, Dictionary<string, object> data)
+    {
+        throw new NotImplementedException();
+    }
+
+    void INetworkRunnerCallbacks.OnHostMigration(NetworkRunner runner, HostMigrationToken hostMigrationToken)
+    {
+        throw new NotImplementedException();
+    }
+
+    void INetworkRunnerCallbacks.OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey key, ArraySegment<byte> data)
+    {
+        Debug.Log("Fusion Reliable data received!");
+    }
+
+    void INetworkRunnerCallbacks.OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey key, float progress)
+    {
+        throw new NotImplementedException();
+    }
+
+    void INetworkRunnerCallbacks.OnSceneLoadDone(NetworkRunner runner)
+    {
+        throw new NotImplementedException();
+    }
+
+    void INetworkRunnerCallbacks.OnSceneLoadStart(NetworkRunner runner)
     {
         throw new NotImplementedException();
     }

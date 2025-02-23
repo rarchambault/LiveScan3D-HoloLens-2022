@@ -1,9 +1,10 @@
-﻿using UnityEngine;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
+using UnityEngine;
 
 public class PointCloudRenderer : MonoBehaviour
 {
     public int maxChunkSize = 65535;
+    //public int maxChunkSize = 4083;
     public float pointSize = 0.005f;
     public GameObject pointCloudElem;
     public Material pointCloudMaterial;
@@ -44,8 +45,6 @@ public class PointCloudRenderer : MonoBehaviour
             nChunks = 1 + nPoints / maxChunkSize;
         }
 
-        Debug.Log("Recieved request to render " + nPoints + " points");
-        
         if (elems.Count < nChunks)
             AddElems(nChunks - elems.Count);
         if (elems.Count > nChunks)
@@ -56,8 +55,8 @@ public class PointCloudRenderer : MonoBehaviour
         {
             int nPointsToRender = System.Math.Min(maxChunkSize, nPoints - offset);
 
-            ElemRenderer renderer = elems[i].GetComponent<ElemRenderer>();
-            renderer.UpdateMesh(arrVertices, arrColors, nPointsToRender, offset);
+            //ElemRendererOriginal renderer = elems[i].GetComponent<ElemRendererOriginal>();
+            //renderer.TriggerMeshUpdate(arrVertices, arrColors, nPointsToRender, offset);
 
             offset += nPointsToRender;
         }
@@ -74,7 +73,7 @@ public class PointCloudRenderer : MonoBehaviour
             newElem.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
 
             elems.Add(newElem);
-        }            
+        }
     }
 
     void RemoveElems(int nElems)
