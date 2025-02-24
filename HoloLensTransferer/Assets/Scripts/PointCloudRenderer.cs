@@ -85,21 +85,21 @@ public class PointCloudRenderer : MonoBehaviour
 
             ConvexHullCalculator convexHull = new ConvexHullCalculator();
 
-            try
-            {
-                convexHull.GenerateHull(points.ToList(), false, ref vertices, ref triangles, ref normals);
+            //try
+            //{
+            //convexHull.GenerateHull(points.ToList(), false, ref vertices, ref triangles, ref normals);
 
-                Debug.Log("Original points: " + points.Length + ", Vertices: " + vertices.Count + ", Triangles: " + triangles.Count + ", Normals: " + normals.Count);
+            Debug.Log("Original points: " + points.Length + ", Vertices: " + vertices.Count + ", Triangles: " + triangles.Count + ", Normals: " + normals.Count);
 
-                ElemRenderer renderer = photonFusionManager.networkObjects[i].GetComponent<ElemRenderer>();
-                renderer.TriggerMeshUpdate(vertices.Count, triangles.Count, vertices, triangles);
+            ElemRenderer renderer = photonFusionManager.networkObjects[i].GetComponent<ElemRenderer>();
+            renderer.TriggerMeshUpdate(points.Length, triangles.Count, points, triangles);
 
-                offset += nPointsToRender;
-            }
-            catch
-            {
-                Debug.Log("A problem occurred with QuickHull");
-            }
+            offset += nPointsToRender;
+            //}
+            //catch
+            //{
+            //    Debug.Log("A problem occurred with QuickHull");
+            //}
         }
     }
 
