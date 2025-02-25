@@ -324,10 +324,34 @@ MonoBehaviour:
       m_Calls: []
   OnReliableData:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 1753297905}
+        m_TargetAssemblyTypeName: PhotonFusionManager, Assembly-CSharp
+        m_MethodName: OnReliableDataReceived
+        m_Mode: 0
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 1
   OnReliableProgress:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 1753297905}
+        m_TargetAssemblyTypeName: PhotonFusionManager, Assembly-CSharp
+        m_MethodName: ReliableData
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 1
   OnObjectEnterAOI:
     m_PersistentCalls:
       m_Calls: []

@@ -45,55 +45,6 @@ public class DocumentPictureReceiver : NetworkBehaviour
             Debug.LogError("PhotonFusionManager is not assigned!");
             return;
         }
-
-        if (Object.HasStateAuthority) // Only the host should receive images
-        {
-            isRunning = true;
-            listenerThread = new Thread(ListenForImages);
-            listenerThread.IsBackground = true;
-            listenerThread.Start();
-        }
-    }
-
-    void ListenForImages()
-    {
-        try
-        {
-            listener = new TcpListener(IPAddress.Parse(serverIP), port);
-            listener.Start();
-            Debug.Log("Listening for images on " + serverIP + ":" + port);
-
-            while (isRunning)
-            {
-                using (TcpClient client = listener.AcceptTcpClient())
-                using (NetworkStream stream = client.GetStream())
-                using (BinaryReader reader = new BinaryReader(stream))
-                {
-                    // Read image dimensions first
-                    int height = reader.ReadInt32();
-                    int width = reader.ReadInt32();
-
-                    // Read image size
-                    int imageSize = reader.ReadInt32();
-                    byte[] imageData = reader.ReadBytes(imageSize);
-
-                    if (imageData.Length > 0)
-                    {
-                        // Store data safely to be processed in the main thread
-                        lock (lockObject)
-                        {
-                            receivedImageData = imageData;
-                            receivedImageWidth = width;
-                            receivedImageHeight = height;
-                        }
-                    }
-                }
-            }
-        }
-        catch (Exception e)
-        {
-            Debug.LogError("TCP Listener Error: " + e.Message);
-        }
     }
 
     void Update()
@@ -102,15 +53,6 @@ public class DocumentPictureReceiver : NetworkBehaviour
         if (receivedImageData != null && !isProcessingImage)
         {
             isProcessingImage = true;
-
-            if (Object.HasStateAuthority)
-            {
-                lock (lockObject) // Ensure thread safety
-                {
-                    SendImageData(receivedImageData, receivedImageWidth, receivedImageHeight);
-                    receivedImageData = null;
-                }
-            }
         }
 
         // Hide renderer if no new image has been received in the timeout period
@@ -119,20 +61,6 @@ public class DocumentPictureReceiver : NetworkBehaviour
             targetRenderer.enabled = false;
             Debug.Log("No new image in over " + IMAGE_TIMEOUT + " seconds, hiding display");
         }
-    }
-
-    private void SendImageData(byte[] imageData, int width, int height)
-    {
-        Debug.Log("Sending image data via PhotonFusionManager...");
-
-        // Send the image using your PhotonFusionManager's SendDocument function
-        photonFusionManager.SendDocument(imageData);
-
-        // Update networked properties for width and height (ensuring they are synchronized **after** data transmission)
-        receivedImageWidth = width;
-        receivedImageHeight = height;
-
-        Debug.Log($"Updated network properties: Width={receivedImageWidth}, Height={receivedImageHeight}");
     }
 
     public override void FixedUpdateNetwork()

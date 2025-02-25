@@ -1,6 +1,8 @@
 ﻿using Fusion;
+using GK;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class ElemRenderer : NetworkBehaviour
@@ -9,13 +11,16 @@ public class ElemRenderer : NetworkBehaviour
     public const int maxChunkSize = 1000;
 
     [Networked] private bool hasChanged { get; set; }
+    //[Networked, Capacity(maxChunkSize)] private NetworkArray<float> vertices { get; }
+    //[Networked, Capacity(maxChunkSize)] private NetworkArray<byte> colors { get; }
+    //[Networked] private int nPointsToRender { get; set; }
+    //[Networked] private int nPointsRendered { get; set; }
+
     [Networked] private int nVertices { get; set; }
     [Networked] private int nTriangles { get; set; }
-    [Networked, Capacity(maxChunkSize)] private NetworkArray<Vector3> vertices { get; }
+    //[Networked, Capacity(maxChunkSize)] private NetworkArray<Vector3> vertices { get; }
     [Networked, Capacity(maxChunkSize)] private NetworkArray<int> triangles { get; }
-
-    private bool hasRenderedNewFrame = false;
-    private float timeSinceLastRender = 0.0f;
+    private List<Vector3> vertices = new List<Vector3>();
 
     private void Awake()
     {
@@ -29,14 +34,6 @@ public class ElemRenderer : NetworkBehaviour
     // Update is called once per frame
     void Update()
     {
-        timeSinceLastRender += Time.deltaTime;
-
-        if (hasRenderedNewFrame)
-        {
-            Debug.Log("CurrentFPS = " + 1 / timeSinceLastRender);
-            timeSinceLastRender = 0.0f;
-            hasRenderedNewFrame = false;
-        }
     }
 
     public override void Render()
@@ -44,7 +41,6 @@ public class ElemRenderer : NetworkBehaviour
         if (hasChanged)
         {
             UpdateMesh();
-            hasRenderedNewFrame = true;
 
             if (!Object.HasStateAuthority)
             {
@@ -53,12 +49,13 @@ public class ElemRenderer : NetworkBehaviour
         }
     }
 
-    public void TriggerMeshUpdate(int nVertices, int nTriangles, List<Vector3> newVertices, List<int> newTriangles)
+    public void TriggerMeshUpdate(int nVertices, int nTriangles, Vector3[] newVertices, List<int> newTriangles)
     {
         this.nVertices = nVertices;
         this.nTriangles = nTriangles;
         this.vertices.Clear();
-        this.vertices.CopyFrom(newVertices, 0, nVertices);
+        //this.vertices.CopyFrom(newVertices, 0, nVertices);
+        this.vertices.AddRange(newVertices);
 
         this.triangles.Clear();
         this.triangles.CopyFrom(newTriangles, 0, nTriangles);
@@ -99,7 +96,7 @@ public class ElemRenderer : NetworkBehaviour
         }
 
         mesh.SetVertices(newVertices);
-        mesh.SetTriangles(newTriangles, 0);
+        //mesh.SetTriangles(newTriangles, 0);
         //mesh.SetNormals(normals);
         mesh.RecalculateNormals();
 

@@ -3,20 +3,25 @@ using Fusion.Sockets;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 public class PhotonFusionManager : MonoBehaviour
 {
     // Fusion Components
     private NetworkRunner _networkRunner;
     private PlayerRef currentPlayer;
-    private List<PlayerRef> otherPlayers = new List<PlayerRef>();
+    private List<PlayerRef> connectedPlayers = new List<PlayerRef>();
     public bool currentPlayerConnected = false;
     public List<NetworkObject> networkObjects = new List<NetworkObject>();
 
+    // Unique key for image data
+    private ReliableKey documentImageDataKey = ReliableKey.FromInts(43, 0, 0, 0);
+
+    // Store received image data
+    private byte[] _receivedDocumentImageData = null;
+    private bool hasNewDocument = false;
+
     void Start()
     {
-        // Initialize Fusion
         _networkRunner = FindObjectOfType<NetworkRunner>();
 
         if (_networkRunner != null)
@@ -25,73 +30,17 @@ public class PhotonFusionManager : MonoBehaviour
         }
     }
 
-    void Update()
-    {
-        //timeSinceLastSend += Time.deltaTime;
-
-        //if (timeSinceLastSend >= sendTimer)
-        //{
-        //    // Large data that needs to be sent
-        //    byte[] largeData = new byte[10000];
-
-        //    // Initialize the array with random values
-        //    System.Random random = new System.Random();
-        //    random.NextBytes(largeData);
-
-        //    // Provide 4 numbers as a unique key for the data
-        //    var key = ReliableKey.FromInts(42, 0, 0, 0);
-
-
-        //    if (otherPlayers.Count > 0)
-        //    {
-        //        foreach (PlayerRef player in otherPlayers)
-        //        {
-        //            // Use as a client to send data to the server/host
-        //            if (_networkRunner == null) Debug.Log("Network runner is null");
-        //            if (player == null) Debug.Log("Player is null");
-        //            if (key.Equals(null)) Debug.Log("Key is null");
-        //            if (largeData == null) Debug.Log("Data is null");
-
-        //            if (_networkRunner.IsRunning)
-        //            {
-        //                if (player.IsRealPlayer)
-        //                {
-        //                    Debug.Log("Network is running and player is a real player");
-        //                    _networkRunner.SendReliableDataToPlayer(player, key, largeData);
-        //                    timeSinceLastSend = 0.0f;
-        //                }
-        //                else
-        //                {
-        //                    Debug.LogError("Player is not a real player");
-        //                }
-        //            }
-        //            else
-        //            {
-        //                Debug.LogError("Network is not running");
-        //            }
-        //        }
-        //    }
-        //}
-    }
-
-    private void OnDestroy()
-    {
-    }
-
     public void PlayerJoined(NetworkRunner runner, PlayerRef playerRef)
     {
         Debug.Log("Player " + playerRef.ToString() + " joined");
 
         _networkRunner = runner;
+        connectedPlayers.Add(playerRef);
 
         if (!currentPlayerConnected)
         {
             currentPlayer = playerRef;
             currentPlayerConnected = true;
-        }
-        else
-        {
-            otherPlayers.Add(playerRef);
         }
     }
 
@@ -105,26 +54,41 @@ public class PhotonFusionManager : MonoBehaviour
         Debug.Log("Received reliable data!");
     }
 
-    public void SendFrame(byte[] vertices, byte[] colors)
+    public void SendDocument(byte[] imageData)
     {
-        // Provide 4 numbers as a unique key for the data
-        var verticesKey = ReliableKey.FromInts(42, 0, 0, 0);
-        var colorsKey = ReliableKey.FromInts(43, 0, 0, 0);
-
-        if (otherPlayers.Count > 0)
+        if (connectedPlayers.Count > 0)
         {
-            foreach (PlayerRef player in otherPlayers)
+            foreach (PlayerRef player in connectedPlayers)
             {
                 if (_networkRunner.IsRunning && player.IsRealPlayer)
                 {
-                    _networkRunner.SendReliableDataToPlayer(player, verticesKey, vertices);
-                    Debug.Log("Sent vertex data to all players");
-
-                    _networkRunner.SendReliableDataToPlayer(player, colorsKey, colors);
-                    Debug.Log("Sent color data to all players");
+                    _networkRunner.SendReliableDataToPlayer(player, documentImageDataKey, imageData);
                 }
             }
         }
+    }
+
+    // Handle incoming reliable data
+    public void OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey key, ArraySegment<byte> data)
+    {
+        if (key.Equals(documentImageDataKey))
+        {
+            _receivedDocumentImageData = data.ToArray();
+            hasNewDocument = true;
+            Debug.Log($"Received image data from player {player} (Size: {_receivedDocumentImageData.Length} bytes)");
+        }
+    }
+
+    public bool HasNewDocument()
+    {
+        return hasNewDocument;
+    }
+
+    // Function to retrieve the received image data
+    public byte[] GetReceivedDocument()
+    {
+        hasNewDocument = false;
+        return _receivedDocumentImageData;
     }
 
     public void SpawnNetworkObject(GameObject prefab, Vector3 position, Quaternion rotation)
