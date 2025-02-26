@@ -24,7 +24,7 @@ public class DocumentPictureReceiver : NetworkBehaviour
     [Networked] private int receivedImageWidth { get; set; }
     [Networked] private int receivedImageHeight { get; set; }
 
-    private const float maxImageSize = 0.5f;
+    private const float maxImageSize = 0.1f;
     private const float pixelToMeter = 0.26f / 1000f; // Convert pixels to meters
     private bool isProcessingImage = false;
 
@@ -185,11 +185,11 @@ public class DocumentPictureReceiver : NetworkBehaviour
 
         Vector3 newScale = targetRenderer.transform.localScale;
         newScale.x = realWidth * scaleFactor;  // Width
-        newScale.z = realHeight * scaleFactor; // Height (assuming Z is height)
+        newScale.y = realHeight * scaleFactor; // Height (assuming Z is height)
 
         targetRenderer.transform.localScale = newScale;
 
-        Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.z}m (Aspect Ratio: {(float)imageWidth / imageHeight})");
+        Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.y}m (Aspect Ratio: {(float)imageWidth / imageHeight})");
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)
