@@ -19,12 +19,10 @@ public class DocumentPictureReceiver : NetworkBehaviour
     private bool isRunning = false;
     private float lastImageTime = 0f;
     private const float IMAGE_TIMEOUT = 10f;
-
-    private byte[] receivedImageData;
     [Networked] private int receivedImageWidth { get; set; }
     [Networked] private int receivedImageHeight { get; set; }
 
-    private bool isProcessingImage = false;
+    private float maxImageSize = 0.5f;
 
     private readonly object lockObject = new object(); // Ensure thread safety
 
@@ -49,12 +47,6 @@ public class DocumentPictureReceiver : NetworkBehaviour
 
     void Update()
     {
-        // Process image only on the main thread
-        if (receivedImageData != null && !isProcessingImage)
-        {
-            isProcessingImage = true;
-        }
-
         // Hide renderer if no new image has been received in the timeout period
         if (Time.time - lastImageTime > IMAGE_TIMEOUT && targetRenderer.enabled)
         {
@@ -63,25 +55,23 @@ public class DocumentPictureReceiver : NetworkBehaviour
         }
     }
 
-    public override void FixedUpdateNetwork()
+    public override void Render()
     {
         // Only apply the texture when width and height are updated (indicating image data is received)
-        if (isProcessingImage && photonFusionManager.HasNewDocument())
+        if (photonFusionManager.HasNewDocument())
         {
-            StartCoroutine(ApplyTexture(receivedImageWidth, receivedImageHeight));
-            isProcessingImage = false;
+            Debug.Log("Found new image data on PhotonFusionManager, starting to display it");
+            ApplyTexture(receivedImageWidth, receivedImageHeight);
         }
     }
 
-    IEnumerator ApplyTexture(int width, int height)
+    private void ApplyTexture(int width, int height)
     {
-        yield return null; // Ensure it runs on the main thread
-
         byte[] imageData = photonFusionManager.GetReceivedDocument(); // Get image data from PhotonFusionManager
         if (imageData == null || imageData.Length == 0)
         {
             Debug.LogError("Failed to retrieve image data from PhotonFusionManager.");
-            yield break;
+            return;
         }
 
         Texture2D texture = new Texture2D(2, 2);
@@ -94,6 +84,7 @@ public class DocumentPictureReceiver : NetworkBehaviour
 
             // Scale the renderer plane to match the aspect ratio
             AdjustRendererScale(width, height);
+            Debug.Log("Applied image to plane");
         }
         else
         {
@@ -101,19 +92,22 @@ public class DocumentPictureReceiver : NetworkBehaviour
         }
     }
 
-    private void AdjustRendererScale(int width, int height)
+    private void AdjustRendererScale(int imageWidth, int imageHeight)
     {
-        float aspectRatio = (float)width / height;
-        Vector3 scale = targetRenderer.transform.localScale;
+        float pixelToMeter = 0.26f / 1000f; // Convert pixels to meters
+        float realWidth = imageWidth * pixelToMeter;
+        float realHeight = imageHeight * pixelToMeter;
 
-        // Adjust width and height while keeping depth unchanged
-        scale.x = aspectRatio;  // Width
-        scale.y = 1;            // Depth remains 1
-        scale.z = 1;            // Height
+        // Calculate scale factor to fit within maxSize while keeping aspect ratio
+        float scaleFactor = Mathf.Min(maxImageSize / realWidth, maxImageSize / realHeight, 1.0f);
 
-        targetRenderer.transform.localScale = scale;
+        Vector3 newScale = targetRenderer.transform.localScale;
+        newScale.x = realWidth * scaleFactor;  // Width
+        newScale.z = realHeight * scaleFactor; // Height (assuming Z is height)
 
-        Debug.Log($"Adjusted Renderer Scale to: {scale.x}, {scale.y}, {scale.z} (Aspect Ratio: {aspectRatio})");
+        targetRenderer.transform.localScale = newScale;
+
+        Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.z}m (Aspect Ratio: {(float)imageWidth / imageHeight})");
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)

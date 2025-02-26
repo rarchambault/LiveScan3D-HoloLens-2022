@@ -24,6 +24,8 @@ public class DocumentPictureReceiver : NetworkBehaviour
     [Networked] private int receivedImageWidth { get; set; }
     [Networked] private int receivedImageHeight { get; set; }
 
+    private const float maxImageSize = 0.5f;
+    private const float pixelToMeter = 0.26f / 1000f; // Convert pixels to meters
     private bool isProcessingImage = false;
 
     private readonly object lockObject = new object(); // Ensure thread safety
@@ -135,9 +137,9 @@ public class DocumentPictureReceiver : NetworkBehaviour
         Debug.Log($"Updated network properties: Width={receivedImageWidth}, Height={receivedImageHeight}");
     }
 
-    public override void FixedUpdateNetwork()
+    public override void Render()
     {
-        // Only apply the texture when width and height are updated (indicating image data is received)
+        // Check that the image was received here and fully sent through Photon
         if (isProcessingImage && photonFusionManager.HasNewDocument())
         {
             StartCoroutine(ApplyTexture(receivedImageWidth, receivedImageHeight));
@@ -173,19 +175,21 @@ public class DocumentPictureReceiver : NetworkBehaviour
         }
     }
 
-    private void AdjustRendererScale(int width, int height)
+    private void AdjustRendererScale(int imageWidth, int imageHeight)
     {
-        float aspectRatio = (float)width / height;
-        Vector3 scale = targetRenderer.transform.localScale;
+        float realWidth = imageWidth * pixelToMeter;
+        float realHeight = imageHeight * pixelToMeter;
 
-        // Adjust width and height while keeping depth unchanged
-        scale.x = aspectRatio;  // Width
-        scale.y = 1;            // Depth remains 1
-        scale.z = 1;            // Height
+        // Calculate scale factor to fit within maxSize while keeping aspect ratio
+        float scaleFactor = Mathf.Min(maxImageSize / realWidth, maxImageSize / realHeight, 1.0f);
 
-        targetRenderer.transform.localScale = scale;
+        Vector3 newScale = targetRenderer.transform.localScale;
+        newScale.x = realWidth * scaleFactor;  // Width
+        newScale.z = realHeight * scaleFactor; // Height (assuming Z is height)
 
-        Debug.Log($"Adjusted Renderer Scale to: {scale.x}, {scale.y}, {scale.z} (Aspect Ratio: {aspectRatio})");
+        targetRenderer.transform.localScale = newScale;
+
+        Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.z}m (Aspect Ratio: {(float)imageWidth / imageHeight})");
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)
