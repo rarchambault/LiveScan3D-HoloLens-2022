@@ -110,13 +110,14 @@ MonoBehaviour:
   m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  SortKey: 2275537051
+  SortKey: 3570421231
   ObjectInterest: 1
   Flags: 262145
   NestedObjects: []
   NetworkedBehaviours:
   - {fileID: 114123662589951318}
   - {fileID: 8595189472562147830}
+  ForceRemoteRenderTimeframe: 0
 --- !u!1 &463884454408270117
 GameObject:
   m_ObjectHideFlags: 0

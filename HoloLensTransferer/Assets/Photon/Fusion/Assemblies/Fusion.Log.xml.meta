@@ -1,6 +1,8 @@
 fileFormatVersion: 2
-guid: dfe46f6ff6fe58c47aa967992595b12e
-DefaultImporter:
+guid: 0c3ceae6535688e43a8538f96f082798
+labels:
+- FusionCodeDoc
+TextScriptImporter:
   externalObjects: {}
   userData: 
   assetBundleName: 

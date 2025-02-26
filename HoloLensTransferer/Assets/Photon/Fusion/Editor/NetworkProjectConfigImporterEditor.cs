@@ -10,7 +10,8 @@ namespace Fusion.Editor {
   [CustomEditor(typeof(NetworkProjectConfigImporter))]
   internal class NetworkProjectConfigImporterEditor : ScriptedImporterEditor {
 
-    private Exception _initializeException;
+    private Exception         _initializeException;
+    private LogSettingsDrawer _logSettingsDrawer;
 
     private static bool _versionExpanded;
     private static string _version;
@@ -45,7 +46,9 @@ namespace Fusion.Editor {
           EditorGUILayout.PropertyField(serializedObject.FindProperty(nameof(NetworkProjectConfigImporter.PrefabOptions)));
           
           EditorGUILayout.Space();
-
+          EditorGUILayout.LabelField("Log", EditorStyles.boldLabel);
+          _logSettingsDrawer.DrawLayout(this, true);
+          
           EditorGUILayout.Space();
           EditorGUILayout.LabelField("Auto-Generated", EditorStyles.boldLabel);
 
@@ -74,21 +77,20 @@ namespace Fusion.Editor {
     }
 
     private static void VersionInfoGUI() {
-      if (_allVersionInfo == null || _allVersionInfo == "") {
-        var asms = System.AppDomain.CurrentDomain.GetAssemblies();
-        for (int i = 0; i < asms.Length; ++i) {
-          var asm = asms[i];
-          var asmname = asm.FullName;
-          if (asmname.StartsWith("Fusion.Runtime,")) {
-            _version = NetworkRunner.BuildType + ": " + System.Diagnostics.FileVersionInfo.GetVersionInfo(asm.Location).ProductVersion;
+      if (string.IsNullOrEmpty(_allVersionInfo)) {
+        var assemblies = System.AppDomain.CurrentDomain.GetAssemblies();
+        foreach (var asm in assemblies) {
+          var assemblyFullName = asm.FullName;
+          if (assemblyFullName.StartsWith("Fusion.Runtime,")) {
+            _version = $"{NetworkRunner.BuildType}: {System.Diagnostics.FileVersionInfo.GetVersionInfo(asm.Location).ProductVersion}";
           }
-          if (asmname.StartsWith("Fusion.") || asmname.StartsWith("Fusion,")) {
-            string fvi = System.Diagnostics.FileVersionInfo.GetVersionInfo(asm.Location).ToString();
-            _allVersionInfo += asmname.Substring(0, asmname.IndexOf(",")) + ": " + fvi + " " + "\n";
+
+          if (assemblyFullName.StartsWith("Fusion.") || assemblyFullName.StartsWith("Fusion,")) {
+            var fileVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(asm.Location).ToString();
+            _allVersionInfo += $"{assemblyFullName.Substring(0, assemblyFullName.IndexOf(",", StringComparison.Ordinal))}: {fileVersion} \n";
           }
         }
       }
-
 
       var r = EditorGUILayout.GetControlRect();
       _versionExpanded = EditorGUI.Foldout(r, _versionExpanded, "");

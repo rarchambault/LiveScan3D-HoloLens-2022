@@ -1,21 +1,5 @@
 #if !FUSION_DEV
 
-#region Assets/Photon/Fusion/Editor/AssemblyAttributes/FusionEditorAssemblyAttributes.Common.cs
-
-// merged EditorAssemblyAttributes
-
-#region RegisterEditorLoader.cs
-
-// the default edit-mode loader
-[assembly: Fusion.Editor.FusionGlobalScriptableObjectEditorAttribute(typeof(Fusion.FusionGlobalScriptableObject), AllowEditMode = true, Order = int.MaxValue)]
-
-#endregion
-
-
-
-#endregion
-
-
 #region Assets/Photon/Fusion/Editor/AssetObjectEditor.cs
 
 namespace Fusion.Editor {
@@ -48,6 +32,125 @@ namespace Fusion.Editor {
   }
 }
 
+
+#endregion
+
+
+#region Assets/Photon/Fusion/Editor/ChangeDllManager.cs
+
+namespace Fusion.Editor {
+  using System;
+  using System.IO;
+  using System.Linq;
+  using UnityEditor;
+  using UnityEngine;
+
+  /// <summary>
+  /// Provides methods to toggle between different DLL modes for the Fusion framework.
+  /// </summary>
+  public static class ChangeDllManager {
+    private const string FusionRuntimeDllGuid = "e725a070cec140c4caffb81624c8c787";
+
+    private static readonly string[] FileList = { "Fusion.Common.dll", "Fusion.Runtime.dll", "Fusion.Realtime.dll", "Fusion.Sockets.dll", "Fusion.Log.dll" };
+
+    /// <summary>
+    /// Changes the DLL mode to Debug.
+    /// </summary>
+    [MenuItem("Tools/Fusion/Change Dll Mode/Debug", false, 500)]
+    public static void ChangeDllModeToSharedDebug() {
+      ChangeDllMode(NetworkRunner.BuildTypes.Debug);
+    }
+
+    /// <summary>
+    /// Changes the DLL mode to Release.
+    /// </summary>
+    [MenuItem("Tools/Fusion/Change Dll Mode/Release", false, 501)]
+    public static void ChangeDllModeToSharedRelease() {
+      ChangeDllMode(NetworkRunner.BuildTypes.Release);
+    }
+
+    /// <summary>
+    /// Changes the DLL mode based on the specified build type and build mode.
+    /// </summary>
+    /// <param name="buildType">The build type (<see cref="NetworkRunner.BuildTypes"/>).</param>
+    private static void ChangeDllMode(NetworkRunner.BuildTypes buildType) {
+      if (NetworkRunner.BuildType == buildType) {
+        Debug.Log($"Fusion Dll Mode is already {buildType}");
+        return;
+      }
+
+      Debug.Log($"Changing Fusion Dll Mode from {NetworkRunner.BuildType} to {buildType}");
+
+      var targetExtension = $"{GetBuildTypeExtension(buildType)}";
+      var targetSubFolder = GetBuildTypeSubFolder(buildType);
+
+      // find the root
+      var fusionRuntimeDllPath = AssetDatabase.GUIDToAssetPath(FusionRuntimeDllGuid);
+      if (string.IsNullOrEmpty(fusionRuntimeDllPath)) {
+        Debug.LogError($"Cannot locate Fusion assemblies directory");
+        return;
+      }
+
+      // Check if all dlls are present
+      var assembliesDir        = PathUtils.Normalize(Path.GetDirectoryName(fusionRuntimeDllPath));
+      var originalFileTemplate = $"{assembliesDir}/{{0}}";
+      var targetFileTemplate   = $"{assembliesDir}/{targetSubFolder}/{{0}}{targetExtension}";
+      var currentDlls          = FileList.All(f => File.Exists(string.Format(originalFileTemplate, f)));
+      var targetDlls           = FileList.All(f => File.Exists(string.Format(targetFileTemplate, f)));
+
+      if (currentDlls == false) {
+        Debug.LogError("Cannot find all Fusion dlls");
+        return;
+      }
+
+      if (targetDlls == false) {
+        Debug.LogError($"Cannot find all Fusion dlls marked with {targetExtension}");
+        return;
+      }
+
+      if (FileList.Any(f => new FileInfo(string.Format(targetFileTemplate, f)).Length == 0)) {
+        Debug.LogError("Targets dlls are not valid");
+        return;
+      }
+
+      // Move the files
+      try {
+        foreach (var f in FileList) {
+          var source = string.Format(targetFileTemplate, f);
+          var dest   = string.Format(originalFileTemplate, f);
+
+          Debug.Log($"Moving {source} to {dest}");
+          FileUtil.ReplaceFile(source, dest);
+        }
+
+        Debug.Log($"Activated Fusion {buildType} dlls");
+      } catch (Exception e) {
+        Debug.LogAssertion(e);
+        Debug.LogError($"Failed to Change Fusion Dll Mode");
+      }
+
+      AssetDatabase.Refresh();
+
+      return;
+
+      // Gets the file extension for the specified build type.
+      string GetBuildTypeExtension(NetworkRunner.BuildTypes referenceBuildType) =>
+        referenceBuildType switch {
+          NetworkRunner.BuildTypes.Debug   => ".debug",
+          NetworkRunner.BuildTypes.Release => ".release",
+          _                                => throw new ArgumentOutOfRangeException()
+        };
+
+      // Gets the subfolder name for the specified build type.
+      string GetBuildTypeSubFolder(NetworkRunner.BuildTypes referenceBuildModes) =>
+        referenceBuildModes switch {
+          NetworkRunner.BuildTypes.Debug   => "Debug",
+          NetworkRunner.BuildTypes.Release => "Release",
+          _                                => throw new ArgumentOutOfRangeException()
+        };
+    }
+  }
+}
 
 #endregion
 
@@ -1619,92 +1722,6 @@ namespace Fusion.Editor {
 
   }
 }
-
-#endregion
-
-
-#region Assets/Photon/Fusion/Editor/DebugDllToggle.cs
-
-namespace Fusion.Editor {
-  using System;
-  using System.IO;
-  using System.Linq;
-  using UnityEditor;
-  using UnityEngine;
-
-  public static class DebugDllToggle {
-
-    const string FusionRuntimeDllGuid = "e725a070cec140c4caffb81624c8c787";
-
-    public static string[] FileList = new[] {
-      "Fusion.Common.dll",
-      "Fusion.Common.pdb",
-      "Fusion.Runtime.dll",
-      "Fusion.Runtime.pdb",
-      "Fusion.Realtime.dll",
-      "Fusion.Realtime.pdb",
-      "Fusion.Sockets.dll",
-      "Fusion.Sockets.pdb"};
-
-    [MenuItem("Tools/Fusion/Toggle Debug Dlls")]
-    public static void Toggle() {
-
-      // find the root
-      string dir;
-      {
-        var fusionRuntimeDllPath = AssetDatabase.GUIDToAssetPath(FusionRuntimeDllGuid);
-        if (string.IsNullOrEmpty(fusionRuntimeDllPath)) {
-          Debug.LogError($"Cannot locate assemblies directory");
-          return;
-        } else {
-          dir = PathUtils.Normalize(Path.GetDirectoryName(fusionRuntimeDllPath));
-        }
-      }
-
-      var dllsAvailable       = FileList.All(f => File.Exists($"{dir}/{f}"));
-      var debugFilesAvailable = FileList.All(f => File.Exists($"{dir}/{f}.debug"));
-
-      if (dllsAvailable == false) {
-        Debug.LogError("Cannot find all fusion dlls");
-        return;
-      }
-
-      if (debugFilesAvailable == false) {
-        Debug.LogError("Cannot find all specially marked .debug dlls");
-        return;
-      }
-
-      if (FileList.Any(f => new FileInfo($"{dir}/{f}.debug").Length == 0)) { 
-        Debug.LogError("Debug dlls are not valid");
-        return;
-      }
-
-      try {
-        foreach (var f in FileList) {
-          var tempFile = FileUtil.GetUniqueTempPathInProject();
-          FileUtil.MoveFileOrDirectory($"{dir}/{f}",        tempFile);
-          FileUtil.MoveFileOrDirectory($"{dir}/{f}.debug",  $"{dir}/{f}");
-          FileUtil.MoveFileOrDirectory(tempFile,            $"{dir}/{f}.debug");
-          File.Delete(tempFile);
-        }
-
-        if (new FileInfo($"{dir}/{FileList[0]}").Length >
-            new FileInfo($"{dir}/{FileList[0]}.debug").Length) {
-          Debug.Log("Activated Fusion DEBUG dlls");
-        }
-        else  {
-          Debug.Log("Activated Fusion RELEASE dlls");
-        }
-      } catch (Exception e) {
-        Debug.LogAssertion(e);
-        Debug.LogError($"Failed to rename files");
-      }
-
-      AssetDatabase.Refresh();
-    }
-  }
-}
-
 
 #endregion
 
@@ -3589,6 +3606,291 @@ namespace Fusion.Editor {
       return new LazyAsset<T>(factory);
     }
   }
+}
+
+#endregion
+
+
+#region LogSettingsDrawer.cs
+
+namespace Fusion.Editor {
+  using System;
+  using System.Collections.Generic;
+  using System.Linq;
+  using UnityEditor;
+  using UnityEditor.Build;
+  using UnityEngine;
+
+
+  struct LogSettingsDrawer {
+    private static readonly Dictionary<string, LogLevel> _logLevels = new Dictionary<string, LogLevel>(StringComparer.Ordinal) {
+      { "FUSION_LOGLEVEL_DEBUG", LogLevel.Debug },
+      { "FUSION_LOGLEVEL_INFO", LogLevel.Info },
+      { "FUSION_LOGLEVEL_WARN", LogLevel.Warn },
+      { "FUSION_LOGLEVEL_ERROR", LogLevel.Error },
+      { "FUSION_LOGLEVEL_NONE", LogLevel.None },
+    };
+
+    private static readonly Dictionary<string, TraceChannels> _enablingDefines = Enum.GetValues(typeof(TraceChannels))
+      .Cast<TraceChannels>()
+      .ToDictionary(x => $"FUSION_TRACE_{x.ToString().ToUpperInvariant()}", x => x);
+
+    private Dictionary<NamedBuildTarget, string[]> _defines;
+    private Lazy<GUIContent> _logLevelHelpContent;
+    private Lazy<GUIContent> _traceChannelsHelpContent;
+
+    void EnsureInitialized() {
+      if (_defines == null) {
+        UpdateDefines();
+      }
+
+      if (_logLevelHelpContent == null) {
+        _logLevelHelpContent = new Lazy<GUIContent>(() => {
+          var result = new GUIContent(FusionCodeDoc.FindEntry(typeof(LogLevel)) ?? new GUIContent());
+          result.text = ("This setting is applied with FUSION_LOGLEVEL_* defines.\n" + result.text).Trim();
+          return result;
+        });
+      }
+
+      if (_traceChannelsHelpContent == null) {
+        _traceChannelsHelpContent = new Lazy<GUIContent>(() => {
+          var result = new GUIContent(FusionCodeDoc.FindEntry(typeof(TraceChannels)) ?? new GUIContent());
+          result.text = ("This setting is applied with FUSION_TRACE_* defines.\n" + result.text).Trim();
+          return result;
+        });
+      }
+    }
+
+    public void DrawLayoutLevelEnumOnly(ScriptableObject editor) {
+      var activeLogLevel = GetActiveBuildTargetDefinedLogLevel();
+      var invalidActiveLogLevel = activeLogLevel == null;
+      EditorGUI.BeginChangeCheck();
+
+      using (new FusionEditorGUI.ShowMixedValueScope(invalidActiveLogLevel)) {
+        activeLogLevel = (LogLevel)EditorGUILayout.EnumPopup(activeLogLevel ?? LogLevel.Info);
+        Debug.Assert(activeLogLevel != null);
+      }
+
+      if (EditorGUI.EndChangeCheck()) {
+        SetLogLevel(activeLogLevel.Value);
+      }
+    }
+    
+    public void DrawLogLevelEnum(Rect rect) {
+      EnsureInitialized();
+      var activeLogLevel = GetActiveBuildTargetDefinedLogLevel();
+      var invalidActiveLogLevel = activeLogLevel == null;
+      EditorGUI.BeginChangeCheck();
+
+      using (new FusionEditorGUI.ShowMixedValueScope(invalidActiveLogLevel)) {
+        activeLogLevel = (LogLevel)EditorGUI.EnumPopup(rect, activeLogLevel ?? LogLevel.Info);
+        Debug.Assert(activeLogLevel != null);
+      }
+
+      if (EditorGUI.EndChangeCheck()) {
+        SetLogLevel(activeLogLevel.Value);
+      }
+    }
+
+    
+    public void DrawLayout(ScriptableObject editor, bool inlineHelp = true) {
+      EnsureInitialized();
+      
+      {
+        var activeLogLevel = GetActiveBuildTargetDefinedLogLevel();
+        var invalidActiveLogLevel = activeLogLevel == null;
+        var rect = inlineHelp ? FusionEditorGUI.LayoutHelpPrefix(editor, "Log Level", _logLevelHelpContent.Value) : EditorGUILayout.GetControlRect();
+        EditorGUI.BeginChangeCheck();
+
+        using (new FusionEditorGUI.ShowMixedValueScope(invalidActiveLogLevel)) {
+          activeLogLevel = (LogLevel)EditorGUI.EnumPopup(rect, "Log Level", activeLogLevel ?? LogLevel.Info);
+          Debug.Assert(activeLogLevel != null);
+        }
+
+        if (invalidActiveLogLevel) {
+          using (new FusionEditorGUI.WarningScope("Either FUSION_LOGLEVEL_* define is missing for the current build " +
+                                                        "target or there are more than one defined. Changing the value will ensure there is " +
+                                                        "exactly one define <b>for each build target</b>.")) {
+          }
+        } else if (GetAllBuildTargetsDefinedLogLevel() == null) {
+          using (new FusionEditorGUI.WarningScope("Not all build targets have the same log level defined. Changing the value will ensure " +
+                                                        "there is exactly one define <b>for each build target</b>.")) {
+          }
+        }
+
+        if (EditorGUI.EndChangeCheck()) {
+          SetLogLevel(activeLogLevel.Value);
+        }
+      }
+
+      {
+        var activeTraceChannels = GetActiveBuildTargetDefinedTraceChannels();
+        var rect = inlineHelp ? FusionEditorGUI.LayoutHelpPrefix(editor, "Trace Channels", _traceChannelsHelpContent.Value) : EditorGUILayout.GetControlRect();
+        
+        EditorGUI.BeginChangeCheck();
+        
+        activeTraceChannels = (TraceChannels)EditorGUI.EnumFlagsField(rect, "Trace Channels", activeTraceChannels);
+
+        if (GetAllBuildTargetsDefinedTraceChannels() == null) {
+          using (new FusionEditorGUI.WarningScope("Not all build targets have the same trace channels defined. Changing the value will ensure " +
+                                                        "the values are the same <b>for each build target</b>.")) {
+          }
+        }
+        
+        if (EditorGUI.EndChangeCheck()) {
+          SetTraceChannels(activeTraceChannels);
+        }
+      }
+
+    }
+    
+    private void SetLogLevel(LogLevel activeLogLevel) {
+      foreach (var kv in _defines) {
+        var target = kv.Key;
+        var defines = kv.Value;
+
+        string newDefine = null;
+        foreach (var (define, level) in _logLevels) {
+          if (level == activeLogLevel) {
+            newDefine = define;
+            continue;
+          }
+          ArrayUtility.Remove(ref defines, define);
+        }
+        ArrayUtility.Remove(ref defines, "FUSION_LOGLEVEL_TRACE");
+        
+        Debug.Assert(newDefine != null);
+        if (!ArrayUtility.Contains(defines, newDefine)) {
+          ArrayUtility.Add(ref defines, newDefine);
+        }
+        
+        PlayerSettings.SetScriptingDefineSymbols(target, string.Join(";", defines));
+      }
+
+      UpdateDefines();
+    }
+    
+    private void SetTraceChannels(TraceChannels activeTraceChannels) {
+      List<string> definesToAdd = new List<string>();
+      List<string> definesToRemove = new List<string>();
+      
+      foreach (var kv in _enablingDefines) {
+        var channel = kv.Value;
+        if (activeTraceChannels.HasFlag(channel)) {
+          definesToAdd.Add(kv.Key);
+        } else {
+          definesToRemove.Add(kv.Key);
+        }
+      }
+      
+      foreach (var kv in _defines) {
+        var target = kv.Key;
+        var defines = kv.Value;
+
+        foreach (var d in definesToRemove) {
+          ArrayUtility.Remove(ref defines, d);
+        }
+
+        foreach (var d in definesToAdd) {
+          if (!ArrayUtility.Contains(defines, d)) {
+            ArrayUtility.Add(ref defines, d);
+          }
+        }
+        
+        PlayerSettings.SetScriptingDefineSymbols(target, string.Join(";", defines));
+      }
+      
+      
+      UpdateDefines();
+    }
+
+    public LogLevel? GetActiveBuildTargetDefinedLogLevel() {
+      EnsureInitialized();
+      var activeBuildTarget = NamedBuildTarget.FromBuildTargetGroup(BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget));
+      return GetDefinedLogLevel(activeBuildTarget);
+    }
+
+    private TraceChannels GetActiveBuildTargetDefinedTraceChannels() {
+      var activeBuildTarget = NamedBuildTarget.FromBuildTargetGroup(BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget));
+      return GetDefinedTraceChannels(activeBuildTarget);
+    }
+      
+
+    private LogLevel? GetAllBuildTargetsDefinedLogLevel() {
+      LogLevel? result = null;
+
+      foreach (var buildTarget in _defines.Keys) {
+        var targetLogLevel = GetDefinedLogLevel(buildTarget);
+
+        if (targetLogLevel == null) {
+          return null;
+        }
+
+        if (result == null) {
+          result = targetLogLevel;
+        } else if (result != targetLogLevel) {
+          return null;
+        }
+      }
+
+      return result;
+    }
+    
+    private TraceChannels? GetAllBuildTargetsDefinedTraceChannels() {
+      TraceChannels? result = null;
+
+      foreach (var buildTarget in _defines.Keys) {
+        var targetLogLevel = GetDefinedTraceChannels(buildTarget);
+        if (result == null) {
+          result = targetLogLevel;
+        } else if (result != targetLogLevel) {
+          return null;
+        }
+      }
+
+      return result;
+    }
+    
+    private LogLevel? GetDefinedLogLevel(NamedBuildTarget group) {
+      LogLevel? result = null;
+      var defines = _defines[group];
+
+      foreach (var define in defines) {
+        if (_logLevels.TryGetValue(define, out var logLevel)) {
+          if (result != null) {
+            if (result != logLevel) {
+              return null;
+            }
+          } else {
+            result = logLevel;
+          }
+        }
+      }
+
+      return result;
+    }
+
+    private TraceChannels GetDefinedTraceChannels(NamedBuildTarget group) {
+      var channels = default(TraceChannels);
+      
+      var defines = _defines[group];
+      foreach (var define in defines) {
+        if (_enablingDefines.TryGetValue(define, out var channel)) {
+          channels |= channel;
+        }
+      }
+
+      return channels;
+    }
+
+    private void UpdateDefines() {
+      _defines = AssetDatabaseUtils.ValidBuildTargetGroups
+        .Select(NamedBuildTarget.FromBuildTargetGroup)
+        .ToDictionary(x => x, x => PlayerSettings.GetScriptingDefineSymbols(x).Split(';'));
+    }
+  }
+  
+  
 }
 
 #endregion
@@ -5528,16 +5830,17 @@ namespace Fusion.Editor {
 
       for (int i = 0; i < _columns.Value.Length; ++i) {
         var column = _columns.Value[i];
+        
+        if (sortingColumn < 0 && column.initiallySorted) {
+          sortingColumn = i;
+          column.sortedAscending = column.initiallySortedAscending;
+        }
 
         if (!column.initiallyVisible) {
           continue;
         }
         
         visibleColumns.Add(i);
-        if (sortingColumn < 0 && column.initiallySorted) {
-          sortingColumn = i;
-          column.sortedAscending = true;
-        }
       }
       
       var headerState = new MultiColumnHeaderState(_columns.Value.Cast<MultiColumnHeaderState.Column>().ToArray()) {
@@ -5620,6 +5923,7 @@ namespace Fusion.Editor {
       public Action<TItem, Rect, bool, bool> cellGUI;
       public bool                            initiallyVisible = true;
       public bool                            initiallySorted;
+      public bool                            initiallySortedAscending = true;
 
       //
       // [Obsolete("Do not use", true)]
@@ -7070,6 +7374,14 @@ namespace Fusion.Editor {
     }
 
     [UnityEditor.InitializeOnLoad]
+    public static class GUIClip {
+      public static Type InternalType = typeof(UnityEngine.GUIUtility).Assembly.GetType("UnityEngine.GUIClip", true);
+      
+      private static readonly StaticAccessor<Rect> _visibleRect = InternalType.CreateStaticPropertyAccessor<Rect>(nameof(visibleRect));
+      public static Rect visibleRect => _visibleRect.GetValue();
+    }
+    
+    [UnityEditor.InitializeOnLoad]
     public static class HandleUtility {
       public static readonly Action ApplyWireMaterial = typeof(UnityEditor.HandleUtility).CreateMethodDelegate<Action>(nameof(ApplyWireMaterial));
     }
@@ -7900,7 +8212,7 @@ namespace Fusion.Editor {
 
       private GUIContent GetHelpContent(InspectorProperty property, bool includeTypeHelp) {
         var parentType = property.ValueEntry.ParentType;
-        var memberInfo = parentType.GetField(property.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        var memberInfo = parentType.GetFieldIncludingBaseTypes(property.Name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
         return FusionCodeDoc.FindEntry(memberInfo, includeTypeHelp) ?? GUIContent.none;
       }
 
@@ -11488,6 +11800,10 @@ namespace Fusion.Editor {
       // skip while being loaded
       if (FusionHubSkin == null) { return false; }
 
+      // Just need to run once
+      FusionGlobalScriptableObjectUtils.EnsureAssetExists<PhotonAppSettings>();
+      FusionGlobalScriptableObjectUtils.EnsureAssetExists<NetworkProjectConfigAsset>();
+
       _sections = new[] {
         new Section("Welcome", "Welcome to Photon Fusion 2", DrawWelcomeSection, Icon.Setup), new Section("Fusion 2 Setup", "Setup Photon Fusion 2", DrawSetupSection, Icon.PhotonCloud),
         new Section("Tutorials & Samples", "Fusion Tutorials and Samples", DrawSamplesSection, Icon.Samples),
@@ -11667,7 +11983,7 @@ namespace Fusion.Editor {
   using UnityEngine;
 
   [InitializeOnLoad]
-  class FusionInstaller {
+  internal class FusionInstaller {
     const string DEFINE_VERSION = "FUSION2";
     const string DEFINE = "FUSION_WEAVER";
     const string PACKAGE_TO_SEARCH = "nuget.mono-cecil";
@@ -11676,13 +11992,7 @@ namespace Fusion.Editor {
     const string MANIFEST_FILE = "manifest.json";
 
     static FusionInstaller() {
-
-#if UNITY_SERVER
-      var defines = PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Server);
-#else
-      var group = BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget);
-      var defines = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group));
-#endif
+      var defines = GetCurrentDefines();
 
       // Check for Defines
       // change based on https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/quality-rules/ca2249
@@ -11702,22 +12012,38 @@ namespace Fusion.Editor {
 
         // append defines
         if (defines.Contains(DEFINE) == false) { defines = $"{defines};{DEFINE}"; }
+
         if (defines.Contains(DEFINE_VERSION) == false) { defines = $"{defines};{DEFINE_VERSION}"; }
-        
-#if UNITY_SERVER
-        PlayerSettings.SetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Server, defines);
-#else
-        PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group), defines);
-#endif
+
+        SetCurrentDefines(defines);
       } else {
         FusionEditorLog.LogInstaller($"Installing '{PACKAGE_TO_INSTALL}' package");
         Client.Add(PACKAGE_TO_INSTALL);
       }
     }
+
+    private static string GetCurrentDefines() {
+#if UNITY_SERVER
+      var defines = PlayerSettings.GetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Server);
+#else
+      var group   = BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget);
+      var defines = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group));
+#endif
+
+      return defines;
+    }
+
+    private static void SetCurrentDefines(string defines) {
+#if UNITY_SERVER
+      PlayerSettings.SetScriptingDefineSymbols(UnityEditor.Build.NamedBuildTarget.Server, defines);
+#else
+      var group = BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget);
+      PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group), defines);
+#endif
+    }
   }
 #endif
 }
-
 
 #endregion
 
@@ -12038,25 +12364,56 @@ namespace Fusion.Editor {
 #endregion
 
 
-#region Assets/Photon/Fusion/Editor/NetworkMecanimAnimatorEditor.cs
+#region Assets/Photon/Fusion/Editor/NetworkMecanimAnimatorBaker.cs
 
 namespace Fusion.Editor {
-
+  using System.Linq;
   using UnityEditor;
-
-  [CustomEditor(typeof(NetworkMecanimAnimator))]
-
-  public class NetworkMecanimAnimatorEditor : NetworkBehaviourEditor {
-    public override void OnInspectorGUI() {
-
-      var na = target as NetworkMecanimAnimator;
-
-      if (na != null) {
-        AnimatorControllerTools.GetHashesAndNames(na, null, null, ref na.TriggerHashes, ref na.StateHashes);
-        na.TotalWords = na.GetWordCount().words;
+  using UnityEngine;
+  
+  public static class NetworkMecanimAnimatorBaker {
+    [NetworkObjectBakerEditTimeHandler]
+    public static bool PostprocessAnimator(NetworkMecanimAnimator animator) {
+      bool dirty = false;
+      if (animator.Animator == null) {
+        animator.Animator = animator.GetComponent<Animator>();
+        if (animator.Animator == null) {
+          FusionEditorLog.Error($"Cannot bake {animator.name}'s {nameof(NetworkMecanimAnimator)} without an {nameof(Animator)} assigned!");
+          return false;
+        } else {
+          dirty = true;
+        }
+      }
+      if (AnimatorControllerTools.GetController(animator.Animator) == null) {
+        FusionEditorLog.Error($"Cannot bake {animator.name}'s {nameof(NetworkMecanimAnimator)} without an {nameof(UnityEditor.Animations.AnimatorController)} assigned to its {nameof(Animator)}!");
+        return dirty;
+      }
+      
+      AnimatorControllerTools.GetHashesAndNames(animator, null, null, ref animator.TriggerHashes, ref animator.StateHashes);
+      
+      // this is dictated by the animator controller
+      FusionEditorLog.Assert(animator.StateHashes[0] == 0);
+      foreach (var hash in animator.StateHashes.Skip(1)) {
+        if (hash >= 0 && hash < animator.StateHashes.Length) {
+          FusionEditorLog.Error($"State hash {hash} is out of range for {animator.name}");
+        }
       }
 
-      base.OnInspectorGUI();
+      FusionEditorLog.Assert(animator.TriggerHashes[0] == 0);
+      foreach (var hash in animator.TriggerHashes.Skip(1)) {
+        if (hash >= 0 && hash < animator.TriggerHashes.Length) {
+          FusionEditorLog.Error($"Trigger hash {hash} is out of range for {animator.name}");
+        }
+      }
+
+      int wordCount = AnimatorControllerTools.GetWordCount(animator);
+      if (animator.TotalWords != wordCount) {
+        animator.TotalWords = wordCount;
+        EditorUtility.SetDirty(animator);
+        return true;
+      }
+
+      return dirty;
     }
   }
 }
@@ -12070,12 +12427,33 @@ namespace Fusion.Editor {
 ﻿namespace Fusion.Editor {
   using System;
   using System.Collections.Generic;
+  using System.Linq;
+  using System.Reflection;
   using UnityEditor;
   using UnityEngine;
 
   public class NetworkObjectBakerEditTime : NetworkObjectBaker {
-    private Dictionary<Type, int?> _executionOrderCache = new Dictionary<Type, int?>();
+    private Dictionary<Type, int?> _executionOrderCache = new ();
+    private ILookup<Type, Delegate> _bakeHandlers;
 
+    public NetworkObjectBakerEditTime() {
+      _bakeHandlers = TypeCache.GetMethodsWithAttribute<NetworkObjectBakerEditTimeHandlerAttribute>()
+        .Select(m => {
+          var order = m.GetCustomAttribute<NetworkObjectBakerEditTimeHandlerAttribute>().Order;
+
+          var parameters = m.GetParameters();
+          Assert.Check(parameters.Length == 1);
+
+          var parameterType = parameters[0].ParameterType;
+          Assert.Check(parameterType == typeof(NetworkBehaviour) || parameterType.IsSubclassOf(typeof(NetworkBehaviour)));
+
+          var handler = Delegate.CreateDelegate(typeof(Func<,>).MakeGenericType(parameterType, typeof(bool)), m, true);
+          return (parameterType, order, handler);
+        })
+        .OrderBy(t => t.order)
+        .ToLookup(t => t.parameterType, (t) => t.handler);
+    }
+    
     protected override bool TryGetExecutionOrder(MonoBehaviour obj, out int order) {
       // is there a cached value?
       if (_executionOrderCache.TryGetValue(obj.GetType(), out var orderNullable)) {
@@ -12110,9 +12488,35 @@ namespace Fusion.Editor {
       
       return (uint)hash;
     }
+
+    protected override bool PostprocessBehaviour(SimulationBehaviour behaviour) {
+      for (var type = behaviour.GetType(); type != typeof(SimulationBehaviour) && type != typeof(NetworkBehaviour); type = type.BaseType) {
+        foreach (var handler in _bakeHandlers[type]) {
+          if ((bool)handler.DynamicInvoke(behaviour)) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
   }
 }
 
+
+#endregion
+
+
+#region Assets/Photon/Fusion/Editor/NetworkObjectBakerEditTimeHandlerAttribute.cs
+
+﻿namespace Fusion.Editor {
+  using System;
+
+  [AttributeUsage(AttributeTargets.Method)]
+  public class NetworkObjectBakerEditTimeHandlerAttribute : Attribute {
+    public int Order { get; set; }
+  }
+}
 
 #endregion
 
@@ -12194,6 +12598,11 @@ namespace Fusion.Editor {
                 serializedObject.FindProperty(nameof(NetworkObject.Flags)).intValue = (int)value;
                 serializedObject.ApplyModifiedProperties();
               }
+              
+#if FUSION_DEV
+              var prefabGuid = GetPrefabGuid(obj);
+              FusionEditorGUI.LayoutSelectableLabel(new GUIContent($"Guid"), prefabGuid.ToUnityGuidString());
+#endif
 
               string loadInfo = "---";
               if (spawnable) {
@@ -12230,9 +12639,9 @@ namespace Fusion.Editor {
               EditorGUILayout.IntField("Word Count", NetworkObject.GetWordCount(obj));
 
 
-              bool headerIsNull = obj.Header == null;
-              EditorGUI.LabelField(FusionEditorGUI.LayoutHelpPrefix(this, _nestingRoot), _nestingRoot.Name, headerIsNull ? "---" : obj.Header->NestingRoot.ToString());
-              EditorGUI.LabelField(FusionEditorGUI.LayoutHelpPrefix(this, _nestingKey), _nestingKey.Name, headerIsNull ? "---" : obj.Header->NestingKey.ToString());
+              bool headerIsNull = obj.Meta == null;
+              EditorGUI.LabelField(FusionEditorGUI.LayoutHelpPrefix(this, _nestingRoot), _nestingRoot.Name, headerIsNull ? "---" : obj.Meta.NestingRoot.ToString());
+              EditorGUI.LabelField(FusionEditorGUI.LayoutHelpPrefix(this, _nestingKey), _nestingKey.Name, headerIsNull ? "---" : obj.Meta.NestingKey.ToString());
 
               EditorGUI.LabelField(FusionEditorGUI.LayoutHelpPrefix(this, _InputAuthority), _InputAuthority.Name, obj.InputAuthority.ToString());
               EditorGUI.LabelField(FusionEditorGUI.LayoutHelpPrefix(this, _StateAuthority), _StateAuthority.Name, obj.StateAuthority.ToString());
@@ -12240,12 +12649,12 @@ namespace Fusion.Editor {
               EditorGUI.Toggle(FusionEditorGUI.LayoutHelpPrefix(this, _HasInputAuthority), _InputAuthority.Name, obj.HasInputAuthority);
               EditorGUI.Toggle(FusionEditorGUI.LayoutHelpPrefix(this, _HasStateAuthority), _StateAuthority.Name, obj.HasStateAuthority);
 
-              EditorGUILayout.Toggle("Is Simulated", obj.Runner.Simulation.IsSimulated(obj));
+              EditorGUILayout.Toggle("Is Simulated", obj.IsInSimulation);
               EditorGUILayout.Toggle("Is Local PlayerObject", ReferenceEquals(obj.Runner.GetPlayerObject(obj.Runner.LocalPlayer), obj));
-              EditorGUILayout.Toggle("Has Main TRSP", obj.Meta.HasMainTRSP);
+              EditorGUILayout.Toggle("Has Main TRSP", obj.Meta?.HasMainTRSP ?? false);
               
               EditorGUILayout.LabelField("Runtime Flags", obj.RuntimeFlags.ToString());
-              EditorGUILayout.LabelField("Header Flags", obj.Header->Flags.ToString());
+              EditorGUILayout.LabelField("Header Flags", obj.Meta?.Flags.ToString());
               
 
               if (obj.Runner.IsClient) {
@@ -12868,26 +13277,25 @@ namespace Fusion.Editor {
         Label("Is Cloud Ready", runner.IsCloudReady);
 
         if (runner.IsCloudReady) {
-
           Label("Is Shared Mode Master Client", runner.IsSharedModeMasterClient);
           Label("UserId", runner.UserId);
           Label("AuthenticationValues", runner.AuthenticationValues);
+        }
 
-          Label("SessionInfo:IsValid", runner.SessionInfo.IsValid);
+        Label("SessionInfo:IsValid", runner.SessionInfo.IsValid);
 
-          if (runner.SessionInfo.IsValid) {
-            Label("SessionInfo:Name", runner.SessionInfo.Name);
-            Label("SessionInfo:IsVisible", runner.SessionInfo.IsVisible);
-            Label("SessionInfo:IsOpen", runner.SessionInfo.IsOpen);
-            Label("SessionInfo:Region", runner.SessionInfo.Region);
-          }
+        if (runner.SessionInfo.IsValid) {
+          Label("SessionInfo:Name", runner.SessionInfo.Name);
+          Label("SessionInfo:IsVisible", runner.SessionInfo.IsVisible);
+          Label("SessionInfo:IsOpen", runner.SessionInfo.IsOpen);
+          Label("SessionInfo:Region", runner.SessionInfo.Region);
+        }
 
-          Label("LobbyInfo:IsValid", runner.LobbyInfo.IsValid);
+        Label("LobbyInfo:IsValid", runner.LobbyInfo.IsValid);
 
-          if (runner.LobbyInfo.IsValid) {
-            Label("LobbyInfo:Name", runner.LobbyInfo.Name);
-            Label("LobbyInfo:Region", runner.LobbyInfo.Region);
-          }
+        if (runner.LobbyInfo.IsValid) {
+          Label("LobbyInfo:Name", runner.LobbyInfo.Name);
+          Label("LobbyInfo:Region", runner.LobbyInfo.Region);
         }
       } else {
         if (runner.TryGetComponent<RunnerEnableVisibility>(out var _) == false) {
@@ -12968,6 +13376,314 @@ namespace Fusion.Editor {
 #endregion
 
 
+#region Assets/Photon/Fusion/Editor/ReflectionUtils.Partial.cs
+
+﻿namespace Fusion.Editor {
+  using System;
+  using System.Collections.Generic;
+  using System.Linq;
+  using System.Reflection;
+  using System.Runtime.CompilerServices;
+  using System.Text;
+  using UnityEngine;
+
+  partial class ReflectionUtils {
+    public static string GetCSharpConstraints(this Type type) {
+      if (type == null) {
+        throw new ArgumentNullException(nameof(type));
+      }
+
+      if (!type.IsGenericTypeDefinition) {
+        return "";
+      }
+
+      var result = new StringBuilder();
+
+      foreach (var genericArg in type.GetGenericArguments()) {
+        var constraints = new List<string>();
+
+        var attribs = genericArg.GenericParameterAttributes;
+
+        if (attribs.HasFlag(GenericParameterAttributes.NotNullableValueTypeConstraint)) {
+          if (genericArg.GetCustomAttributes().Any(x => x.GetType().FullName == "System.Runtime.CompilerServices.IsUnmanagedAttribute")) {
+            constraints.Add("unmanaged");
+          } else {
+            constraints.Add("struct");
+          }
+        } else if (attribs.HasFlag(GenericParameterAttributes.ReferenceTypeConstraint)) {
+          constraints.Add("class");
+        } else {
+          foreach (var c in genericArg.GetGenericParameterConstraints().Where(x => !x.IsInterface)) {
+            constraints.Add(GetCSharpTypeName(c));
+          }
+        }
+
+        foreach (var c in genericArg.GetGenericParameterConstraints().Where(x => x.IsInterface)) {
+          constraints.Add(GetCSharpTypeName(c));
+        }
+
+        if (attribs.HasFlag(GenericParameterAttributes.DefaultConstructorConstraint) && !attribs.HasFlag(GenericParameterAttributes.NotNullableValueTypeConstraint)) {
+          constraints.Add("new()");
+        }
+
+        if (constraints.Any()) {
+          if (result.Length != 0) {
+            result.Append(" ");
+          }
+
+          result.Append($"where {genericArg.Name} : {string.Join(", ", constraints)}");
+        }
+      }
+
+      return result.ToString();
+    }
+
+    public static string GetCSharpTypeName(this Type type, string suffix = null, bool includeNamespace = true, bool includeGenerics = true, bool useGenericNames = false, bool shortNameForBuiltIns = true) {
+
+      if (shortNameForBuiltIns) {
+        if (type == typeof(bool)) {
+          return "bool";
+        }
+        if (type == typeof(byte)) {
+          return "byte";
+        }
+        if (type == typeof(sbyte)) {
+          return "sbyte";
+        }
+        if (type == typeof(short)) {
+          return "short";
+        }
+        if (type == typeof(ushort)) {
+          return "ushort";
+        }
+        if (type == typeof(int)) {
+          return "int";
+        }
+        if (type == typeof(uint)) {
+          return "uint";
+        }
+        if (type == typeof(long)) {
+          return "long";
+        }
+        if (type == typeof(ulong)) {
+          return "ulong";
+        }
+        if (type == typeof(float)) {
+          return "float";
+        }
+        if (type == typeof(double)) {
+          return "double";
+        }
+        if (type == typeof(char)) {
+          return "char";
+        }
+        if (type == typeof(void)) {
+          return "void";
+        }
+        if (type == typeof(string)) {
+          return "string";
+        }
+        if (type == typeof(object)) {
+          return "object";
+        }
+        if (type == typeof(decimal)) {
+          return "decimal";
+        }
+      }
+      
+      string fullName;
+
+      if (includeNamespace) {
+        fullName = type.FullName;
+        if (fullName == null) {
+          if (type.IsGenericParameter) {
+            fullName = type.Name;
+          } else {
+            fullName = type.Namespace + "." + type.Name;
+          }
+        }
+      } else {
+        fullName = type.Name;
+      }
+
+      if (useGenericNames && type.IsConstructedGenericType) {
+        type = type.GetGenericTypeDefinition();
+      }
+
+      string result;
+      if (type.IsGenericType) {
+        var parentType = fullName.Split('`').First();
+        if (includeGenerics) {
+          var genericArguments = string.Join(", ", type.GetGenericArguments().Select(x => x.GetCSharpTypeName()));
+          result = $"{parentType}{suffix ?? ""}<{genericArguments}>";
+        } else {
+          result = $"{parentType}{suffix ?? ""}";
+        }
+      } else {
+        result = fullName + (suffix ?? "");
+      }
+
+      return result.Replace('+', '.');
+    }
+
+    public static string GetCSharpTypeGenerics(this Type type, bool useGenericNames = false, bool useGenericPlaceholders = false) {
+      string result;
+      if (type.IsGenericType) {
+        var genericArguments = string.Join(", ", type.GetGenericArguments().Select(x => useGenericPlaceholders ? "" : x.GetCSharpTypeName()));
+        result = $"<{genericArguments}>";
+      } else {
+        result = "";
+      }
+
+      result = result.Replace('+', '.');
+      return result;
+    }
+    
+    public static string GetCSharpAttributeDefinition<T>(this MemberInfo type) where T : Attribute {
+      var attributeData = type.GetCustomAttributesData().SingleOrDefault(x => x.AttributeType == typeof(T));
+      if (attributeData == null) {
+        throw new InvalidOperationException($"Attribute {typeof(T).FullName} not found");
+      }
+      
+      // need a fix for generic typeofs
+      var constructorArgs = attributeData.ConstructorArguments
+        .Select(arg => arg.ArgumentType == typeof(Type) ? $"typeof({((Type)arg.Value).GetCSharpTypeName()})" : arg.ToString());
+
+      // named generic arguments not yet supported
+      var namedArgs = attributeData.NamedArguments
+        .Select(arg => arg.ToString());
+
+      return $"[{attributeData.Constructor.DeclaringType!.FullName}({string.Join(", ", constructorArgs.Concat(namedArgs))})]";
+    }
+    
+    public static string GetCSharpVisibility(this MemberInfo memberInfo) {
+      if (memberInfo is Type type) {
+        return GetTypeVisibility(type.Attributes & TypeAttributes.VisibilityMask);
+      }
+      if (memberInfo is MethodBase method) {
+        return GetMethodVisibility(method.Attributes & MethodAttributes.MemberAccessMask);
+      }
+      if (memberInfo is PropertyInfo propertyInfo) {
+        return GetMethodVisibility(propertyInfo.GetMethod.Attributes & MethodAttributes.MemberAccessMask);
+      }
+      if (memberInfo is FieldInfo field) {
+        return GetFieldVisibility(field.Attributes & FieldAttributes.FieldAccessMask);
+      }
+      throw new ArgumentException("MemberInfo is not a valid type", nameof(memberInfo));
+      
+      string GetFieldVisibility(FieldAttributes visibility) {
+        switch (visibility) {
+          case FieldAttributes.Public:
+            return "public";
+          case FieldAttributes.Family:
+            return "protected";
+          case FieldAttributes.FamANDAssem:
+            return "protected internal";
+          case FieldAttributes.Assembly:
+            return "internal";
+          default:
+            return "private";
+        }
+      }
+    
+      string GetMethodVisibility(MethodAttributes visibility) {
+        switch (visibility) {
+          case MethodAttributes.Public:
+            return "public";
+          case MethodAttributes.Family:
+            return "protected";
+          case MethodAttributes.FamANDAssem:
+            return "protected internal";
+          case MethodAttributes.Assembly:
+            return "internal";
+          default:
+            return "private";
+        }
+      }
+
+      string GetTypeVisibility(TypeAttributes visibility) {
+        switch (visibility) {
+          case TypeAttributes.Public:
+          case TypeAttributes.NestedPublic:
+            return "public";
+          case TypeAttributes.NestedFamily:
+            return "protected";
+          case TypeAttributes.NestedFamANDAssem:
+            return "protected internal";
+          case TypeAttributes.NestedAssembly:
+            return "internal";
+          case TypeAttributes.NestedPrivate:
+            return "private";
+          default:
+            return "";
+        }
+      }
+    }
+
+    public static bool IsBackingField(this FieldInfo fieldInfo, out string propertyName) {
+      if (!fieldInfo.IsDefined(typeof(CompilerGeneratedAttribute))) {
+        propertyName = null;
+        return false;
+      }
+
+      if (!fieldInfo.IsPrivate) {
+        propertyName = null;
+        return false;
+      }
+
+      if (!fieldInfo.Name.StartsWith("<") && !fieldInfo.Name.EndsWith(">k__BackingField")) {
+        propertyName = null;
+        return false;
+      }
+
+      propertyName = fieldInfo.Name.Substring(1, fieldInfo.Name.Length - 17);
+      return true;
+    }
+
+    public static bool IsFixedSizeBuffer(this Type type, out Type elementType, out int size) {
+      size = default;
+      elementType = default;
+
+      if (!type.IsValueType) {
+        return false;
+      }
+
+      if (!type.Name.EndsWith("e__FixedBuffer")) {
+        return false;
+      }
+
+      // this is a bit of a guesswork
+      if (type.IsDefined(typeof(CompilerGeneratedAttribute)) &&
+          type.IsDefined(typeof(UnsafeValueTypeAttribute)) &&
+          type.StructLayoutAttribute != null) {
+        // get the .size
+        size = type.StructLayoutAttribute.Size;
+        elementType = type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)[0].FieldType;
+        return true;
+      }
+
+      return false;
+    }
+    
+    public static Type GetDeclaringType(this Type type, Type stopAt) {
+      Debug.Assert(type != null);
+
+      while (type.DeclaringType != null && type.DeclaringType != stopAt) {
+        type = type.DeclaringType;
+      }
+
+      if (stopAt != type.DeclaringType) {
+        throw new InvalidOperationException($"Type {type} does not have a declaring type {stopAt}");
+      }
+
+      return type;
+    }
+  }
+}
+
+#endregion
+
+
 #region Assets/Photon/Fusion/Editor/Statistics/FusionStatisticsEditor.cs
 
 namespace Fusion.Statistics {
@@ -13015,44 +13731,14 @@ namespace Fusion.Editor {
   using UnityEditor.Animations;
   using UnityEditor;
 
-  /// <summary>
-  /// Storage type for AnimatorController cached transition data, which is a bit different than basic state hashes
-  /// </summary>
-  [System.Serializable]
-  public class TransitionInfo {
-    public int index;
-    public int hash;
-    public int state;
-    public int destination;
-    public float duration;
-    public float offset;
-    public bool durationIsFixed;
-
-    public TransitionInfo(int index, int hash, int state, int destination, float duration, float offset, bool durationIsFixed) {
-      this.index = index;
-      this.hash = hash;
-      this.state = state;
-      this.destination = destination;
-      this.duration = duration;
-      this.offset = offset;
-      this.durationIsFixed = durationIsFixed;
-    }
-  }
-
-  public static class AnimatorControllerTools {
-    /// <summary>
-    /// To ensure triggers are synced consistently, 1 bit is used for true/false and 3 more are used
-    /// to differentiate the state (these are incremented with every change to the underlying bool).
-    /// </summary>
-    const int BITS_PER_BOOL = 4;
-
+  internal static class AnimatorControllerTools {
     //// Attach methods to Fusion.Runtime NetworkedAnimator
     //[InitializeOnLoadMethod]
     //public static void RegisterFusionDelegates() {
     //  NetworkedAnimator.GetWordCountDelegate = GetWordCount;
     //}
 
-    private static AnimatorController GetController(this Animator a) {
+    internal static AnimatorController GetController(Animator a) {
       
       RuntimeAnimatorController rac = a.runtimeAnimatorController;
       AnimatorOverrideController overrideController = rac as AnimatorOverrideController;
@@ -13066,7 +13752,7 @@ namespace Fusion.Editor {
       return rac as AnimatorController;
     }
 
-    private static void GetTriggerNames(this AnimatorController ctr, List<string> namelist) {
+    private static void GetTriggerNames(AnimatorController ctr, List<string> namelist) {
       namelist.Clear();
 
       foreach (var p in ctr.parameters)
@@ -13078,7 +13764,7 @@ namespace Fusion.Editor {
         }
     }
 
-    private static void GetTriggerNames(this AnimatorController ctr, List<int> hashlist) {
+    private static void GetTriggerNames(AnimatorController ctr, List<int> hashlist) {
       hashlist.Clear();
 
       foreach (var p in ctr.parameters)
@@ -13089,7 +13775,7 @@ namespace Fusion.Editor {
 
     /// ------------------------------ STATES --------------------------------------
 
-    private static void GetStatesNames(this AnimatorController ctr, List<string> namelist) {
+    private static void GetStatesNames(AnimatorController ctr, List<string> namelist) {
       namelist.Clear();
 
       foreach (var l in ctr.layers) {
@@ -13126,7 +13812,7 @@ namespace Fusion.Editor {
 
     }
 
-    private static void GetStatesNames(this AnimatorController ctr, List<int> hashlist) {
+    private static void GetStatesNames(AnimatorController ctr, List<int> hashlist) {
       hashlist.Clear();
 
       foreach (var l in ctr.layers) {
@@ -13222,76 +13908,10 @@ namespace Fusion.Editor {
     private static List<string> tempNamesList = new List<string>();
     private static List<int> tempHashList = new List<int>();
     
-    // This method is a near copy of the code used in NMA for determining WordCount, but uses GetController instead.
-    internal static (int paramCount, int boolCount, int layerCount, int words) GetWordCount(this NetworkMecanimAnimator netAnim) {
-      // always get new Animator in case it has changed.
-      Animator animator = netAnim.Animator;
-      if (animator == null) {
-        animator = netAnim.GetComponent<Animator>();
-        if (animator == null) {
-          return default;
-        }
-
-        // Add the animator we found
-        netAnim.Animator = animator;
-      }
-
-      AnimatorController ac = animator.GetController();
-
-      if (ac == null) {
-        return default;
-      }
-      
-      var settings       = netAnim.SyncSettings;
-      int param32Count   = 0;
-      int paramBoolCount = 0;
-
-      bool includeI    = (settings & AnimatorSyncSettings.ParameterInts)     == AnimatorSyncSettings.ParameterInts;
-      bool includeF    = (settings & AnimatorSyncSettings.ParameterFloats)   == AnimatorSyncSettings.ParameterFloats;
-      bool includeB    = (settings & AnimatorSyncSettings.ParameterBools)    == AnimatorSyncSettings.ParameterBools;
-      bool includeT    = (settings & AnimatorSyncSettings.ParameterTriggers) == AnimatorSyncSettings.ParameterTriggers;
-      var  includeStat = (settings & AnimatorSyncSettings.StateRoot)         == AnimatorSyncSettings.StateRoot;
-      var  includeWght = (settings & AnimatorSyncSettings.LayerWeights)      == AnimatorSyncSettings.LayerWeights;
-      var  includeLyrs = (settings & AnimatorSyncSettings.StateLayers)       == AnimatorSyncSettings.StateLayers;
-      
-      var parameters = ac.parameters;
-      for (int i = 0; i < parameters.Length; ++i) {
-        var param = parameters[i];
-
-        switch (param.type) {
-          case AnimatorControllerParameterType.Int:
-            if (includeI)
-              param32Count++;
-            break;
-          case AnimatorControllerParameterType.Float:
-            if (includeF)
-              param32Count++;
-            break;
-          case AnimatorControllerParameterType.Bool:
-            if (includeB)
-              paramBoolCount++;
-            break;
-          case AnimatorControllerParameterType.Trigger:
-            if (includeT)
-              paramBoolCount++;
-            break;
-        }
-      }
-
-      int layerCount          = ac.layers.Length;
-      int syncedLayerCount    = includeLyrs ? layerCount : 1;
-      int stateWordCount      = includeStat ? 2 * syncedLayerCount : 0;
-      int weightWordCount     = (includeWght && layerCount > 0) ? (layerCount - 1) : 0;
-      int paramBoolsWordCount = (paramBoolCount * BITS_PER_BOOL + 31) >> 5;
-      int words               = param32Count + paramBoolsWordCount + stateWordCount + weightWordCount;
-
-      return (param32Count, paramBoolCount, layerCount, words);
-    }
-    
     /// <summary>
     /// Re-index all of the State and Trigger names in the current AnimatorController. Never hurts to run this (other than hanging the editor for a split second).
     /// </summary>
-    internal static void GetHashesAndNames(this NetworkMecanimAnimator netAnim,
+    internal static void GetHashesAndNames(NetworkMecanimAnimator netAnim,
         List<string> sharedTriggNames,
         List<string> sharedStateNames,
         ref int[] sharedTriggIndexes,
@@ -13310,21 +13930,21 @@ namespace Fusion.Editor {
       //if (animator && EditorApplication.timeSinceStartup - lastRebuildTime > AUTO_REBUILD_RATE) {
       //  lastRebuildTime = EditorApplication.timeSinceStartup;
 
-      AnimatorController ac = animator.GetController();
+      AnimatorController ac = GetController(animator);
       if (ac != null) {
         if (ac.animationClips == null || ac.animationClips.Length == 0)
           Debug.LogWarning("'" + animator.name + "' has an Animator with no animation clips. Some Animator Controllers require a restart of Unity, or for a Build to be made in order to initialize correctly.");
 
         bool haschanged = false;
 
-        ac.GetTriggerNames(tempHashList);
+        GetTriggerNames(ac, tempHashList);
         tempHashList.Insert(0, 0);
         if (!CompareIntArray(sharedTriggIndexes, tempHashList)) {
           sharedTriggIndexes = tempHashList.ToArray();
           haschanged = true;
         }
 
-        ac.GetStatesNames(tempHashList);
+        GetStatesNames(ac, tempHashList);
         tempHashList.Insert(0, 0);
         if (!CompareIntArray(sharedStateIndexes, tempHashList)) {
           sharedStateIndexes = tempHashList.ToArray();
@@ -13332,7 +13952,7 @@ namespace Fusion.Editor {
         }
 
         if (sharedTriggNames != null) {
-          ac.GetTriggerNames(tempNamesList);
+          GetTriggerNames(ac, tempNamesList);
           tempNamesList.Insert(0, null);
           if (!CompareNameLists(tempNamesList, sharedTriggNames)) {
             CopyNameList(tempNamesList, sharedTriggNames);
@@ -13341,7 +13961,7 @@ namespace Fusion.Editor {
         }
 
         if (sharedStateNames != null) {
-          ac.GetStatesNames(tempNamesList);
+          GetStatesNames(ac, tempNamesList);
           tempNamesList.Insert(0, null);
           if (!CompareNameLists(tempNamesList, sharedStateNames)) {
             CopyNameList(tempNamesList, sharedStateNames);
@@ -13355,6 +13975,18 @@ namespace Fusion.Editor {
         }
       }
       //}
+    }
+
+    /// <summary>
+    /// Returns the <see cref="NetworkMecanimAnimator"/>'s word count, using the animator's animator controller.
+    /// </summary>
+    internal static int GetWordCount(NetworkMecanimAnimator nma) {
+      if (nma.Animator == null) {
+        return 0;
+      }
+
+      AnimatorController ac = GetController(nma.Animator);
+      return NetworkMecanimAnimator.AnimatorData.GetWordCount(nma.SyncSettings, ac.parameters, new int[ac.parameters.Length], ac.layers.Length, out _, out _, out _, out _);
     }
 
     private static bool CompareNameLists(List<string> one, List<string> two) {
