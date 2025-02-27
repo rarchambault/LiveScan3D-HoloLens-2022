@@ -9,20 +9,21 @@ using UnityEngine;
 
 public class DocumentPictureReceiver : NetworkBehaviour
 {
-    public string serverIP = "127.0.0.1";
-    public int port = 48004;
     public Renderer targetRenderer;
-    public PhotonFusionManager photonFusionManager;
 
+    private PhotonFusionManager photonFusionManager;
     private TcpListener listener;
     private Thread listenerThread;
     private bool isRunning = false;
     private float lastImageTime = 0f;
-    private const float IMAGE_TIMEOUT = 10f;
+    private const float IMAGE_TIMEOUT = 120f;
     [Networked] private int receivedImageWidth { get; set; }
     [Networked] private int receivedImageHeight { get; set; }
 
-    private const float maxImageSize = 0.1f;
+    private const float maxImageSize = 3.0f;
+    private const float minImageSize = 1.0f;
+    private float xScaleUnitWidth;
+    private float zScaleUnitHeight;
     private const float pixelToMeter = 0.26f / 1000f; // Convert pixels to meters
 
     private readonly object lockObject = new object(); // Ensure thread safety
@@ -44,16 +45,17 @@ public class DocumentPictureReceiver : NetworkBehaviour
             Debug.LogError("PhotonFusionManager is not assigned!");
             return;
         }
-    }
 
-    void Update()
-    {
-        // Hide renderer if no new image has been received in the timeout period
-        if (Time.time - lastImageTime > IMAGE_TIMEOUT && targetRenderer.enabled)
-        {
-            targetRenderer.enabled = false;
-            Debug.Log("No new image in over " + IMAGE_TIMEOUT + " seconds, hiding display");
-        }
+        // Get the current world-space width and height of the plane
+        float currentWorldWidth = targetRenderer.localBounds.size.x;
+        float currentWorldHeight = targetRenderer.localBounds.size.z;
+
+        // Get the current local scale
+        Vector3 localScale = targetRenderer.transform.localScale;
+
+        // Compute the unit local x-scale and y-scale
+        xScaleUnitWidth = (1.0f * localScale.x) / currentWorldWidth;
+        zScaleUnitHeight = (1.0f * localScale.z) / currentWorldHeight;
     }
 
     public override void Render()
@@ -62,11 +64,18 @@ public class DocumentPictureReceiver : NetworkBehaviour
         if (photonFusionManager.HasNewDocument())
         {
             Debug.Log("Found new image data on PhotonFusionManager, starting to display it");
-            ApplyTexture(receivedImageWidth, receivedImageHeight);
+            ApplyTexture();
+        }
+
+        // Hide renderer if no new image has been received in the timeout period
+        if (Time.time - lastImageTime > IMAGE_TIMEOUT && targetRenderer.enabled)
+        {
+            targetRenderer.enabled = false;
+            Debug.Log("No new image in over " + IMAGE_TIMEOUT + " seconds, hiding display");
         }
     }
 
-    private void ApplyTexture(int width, int height)
+    private void ApplyTexture()
     {
         byte[] imageData = photonFusionManager.GetReceivedDocument(); // Get image data from PhotonFusionManager
         if (imageData == null || imageData.Length == 0)
@@ -84,7 +93,7 @@ public class DocumentPictureReceiver : NetworkBehaviour
             lastImageTime = Time.time;
 
             // Scale the renderer plane to match the aspect ratio
-            AdjustRendererScale(width, height);
+            AdjustRendererScale();
             Debug.Log("Applied image to plane");
         }
         else
@@ -93,21 +102,31 @@ public class DocumentPictureReceiver : NetworkBehaviour
         }
     }
 
-    private void AdjustRendererScale(int imageWidth, int imageHeight)
+    private void AdjustRendererScale()
     {
-        float realWidth = imageWidth * pixelToMeter;
-        float realHeight = imageHeight * pixelToMeter;
+        if (receivedImageWidth <= 0 || receivedImageHeight <= 0)
+        {
+            Debug.Log("Received image width or height was null");
+            return;
+        }
 
-        // Calculate scale factor to fit within maxSize while keeping aspect ratio
-        float scaleFactor = Mathf.Min(maxImageSize / realWidth, maxImageSize / realHeight, 1.0f);
+        float aspectRatio = (float)receivedImageWidth / (float)receivedImageHeight;
+        float realWidth = (float)receivedImageWidth * pixelToMeter;
+        float realHeight = (float)receivedImageHeight * pixelToMeter;
+
+        realWidth = Mathf.Clamp(realWidth, minImageSize, maxImageSize);
+        realHeight = realWidth / aspectRatio;
+
+        realHeight = Mathf.Clamp(realHeight, minImageSize, maxImageSize);
+        realWidth = realHeight * aspectRatio;
 
         Vector3 newScale = targetRenderer.transform.localScale;
-        newScale.x = realWidth * scaleFactor;  // Width
-        newScale.y = realHeight * scaleFactor; // Height
+        newScale.x = realWidth * xScaleUnitWidth;  // Width
+        newScale.z = realHeight * zScaleUnitHeight; // Height
 
         targetRenderer.transform.localScale = newScale;
 
-        Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.y}m (Aspect Ratio: {(float)imageWidth / imageHeight})");
+        Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.z}m (Aspect Ratio: {(float)receivedImageWidth / receivedImageHeight})");
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)

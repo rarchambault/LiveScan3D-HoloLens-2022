@@ -12,19 +12,24 @@ public class DocumentPictureReceiver : NetworkBehaviour
     public string serverIP = "127.0.0.1";
     public int port = 48004;
     public Renderer targetRenderer;
-    public PhotonFusionManager photonFusionManager;
 
+    private PhotonFusionManager photonFusionManager;
     private TcpListener listener;
     private Thread listenerThread;
     private bool isRunning = false;
     private float lastImageTime = 0f;
-    private const float IMAGE_TIMEOUT = 10f;
+    private const float IMAGE_TIMEOUT = 120f;
 
     private byte[] receivedImageData;
     [Networked] private int receivedImageWidth { get; set; }
     [Networked] private int receivedImageHeight { get; set; }
+    private int newWidth = 0;
+    private int newHeight = 0;
 
-    private const float maxImageSize = 0.1f;
+    private const float maxImageSize = 3.0f;
+    private const float minImageSize = 1.0f;
+    private float xScaleUnitWidth;
+    private float zScaleUnitHeight;
     private const float pixelToMeter = 0.26f / 1000f; // Convert pixels to meters
     private bool isProcessingImage = false;
 
@@ -47,6 +52,17 @@ public class DocumentPictureReceiver : NetworkBehaviour
             Debug.LogError("PhotonFusionManager is not assigned!");
             return;
         }
+
+        // Get the current world-space width and height of the plane
+        float currentWorldWidth = targetRenderer.localBounds.size.x;
+        float currentWorldHeight = targetRenderer.localBounds.size.z;
+
+        // Get the current local scale
+        Vector3 localScale = targetRenderer.transform.localScale;
+
+        // Compute the unit local x-scale and z-scale
+        xScaleUnitWidth = (1.0f * localScale.x) / currentWorldWidth;
+        zScaleUnitHeight = (1.0f * localScale.z) / currentWorldHeight;
 
         if (Object.HasStateAuthority) // Only the host should receive images
         {
@@ -85,8 +101,8 @@ public class DocumentPictureReceiver : NetworkBehaviour
                         lock (lockObject)
                         {
                             receivedImageData = imageData;
-                            receivedImageWidth = width;
-                            receivedImageHeight = height;
+                            newWidth = width;
+                            newHeight = height;
                         }
                     }
                 }
@@ -109,10 +125,20 @@ public class DocumentPictureReceiver : NetworkBehaviour
             {
                 lock (lockObject) // Ensure thread safety
                 {
-                    SendImageData(receivedImageData, receivedImageWidth, receivedImageHeight);
+                    SendImageData(receivedImageData);
                     receivedImageData = null;
                 }
             }
+        }
+
+        // Check that the image was received here and fully sent through Photon
+        if (isProcessingImage && photonFusionManager.HasNewDocument())
+        {
+            // Update networked properties for width and height (ensuring they are synchronized **after** data transmission)
+            receivedImageWidth = newWidth;
+            receivedImageHeight = newHeight;
+            ApplyTexture();
+            isProcessingImage = false;
         }
 
         // Hide renderer if no new image has been received in the timeout period
@@ -123,39 +149,22 @@ public class DocumentPictureReceiver : NetworkBehaviour
         }
     }
 
-    private void SendImageData(byte[] imageData, int width, int height)
+    private void SendImageData(byte[] imageData)
     {
         Debug.Log("Sending image data via PhotonFusionManager...");
 
         // Send the image using your PhotonFusionManager's SendDocument function
         photonFusionManager.SendDocument(imageData);
-
-        // Update networked properties for width and height (ensuring they are synchronized **after** data transmission)
-        receivedImageWidth = width;
-        receivedImageHeight = height;
-
-        Debug.Log($"Updated network properties: Width={receivedImageWidth}, Height={receivedImageHeight}");
     }
 
-    public override void Render()
+    private void ApplyTexture()
     {
-        // Check that the image was received here and fully sent through Photon
-        if (isProcessingImage && photonFusionManager.HasNewDocument())
-        {
-            StartCoroutine(ApplyTexture(receivedImageWidth, receivedImageHeight));
-            isProcessingImage = false;
-        }
-    }
-
-    IEnumerator ApplyTexture(int width, int height)
-    {
-        yield return null; // Ensure it runs on the main thread
-
         byte[] imageData = photonFusionManager.GetReceivedDocument(); // Get image data from PhotonFusionManager
+
         if (imageData == null || imageData.Length == 0)
         {
             Debug.LogError("Failed to retrieve image data from PhotonFusionManager.");
-            yield break;
+            return;
         }
 
         Texture2D texture = new Texture2D(2, 2);
@@ -167,7 +176,7 @@ public class DocumentPictureReceiver : NetworkBehaviour
             lastImageTime = Time.time;
 
             // Scale the renderer plane to match the aspect ratio
-            AdjustRendererScale(width, height);
+            AdjustRendererScale();
         }
         else
         {
@@ -175,21 +184,25 @@ public class DocumentPictureReceiver : NetworkBehaviour
         }
     }
 
-    private void AdjustRendererScale(int imageWidth, int imageHeight)
+    private void AdjustRendererScale()
     {
-        float realWidth = imageWidth * pixelToMeter;
-        float realHeight = imageHeight * pixelToMeter;
+        float aspectRatio = (float)receivedImageWidth / (float)receivedImageHeight;
+        float realWidth = (float)receivedImageWidth * pixelToMeter;
+        float realHeight = (float)receivedImageHeight * pixelToMeter;
 
-        // Calculate scale factor to fit within maxSize while keeping aspect ratio
-        float scaleFactor = Mathf.Min(maxImageSize / realWidth, maxImageSize / realHeight, 1.0f);
+        realWidth = Mathf.Clamp(realWidth, minImageSize, maxImageSize);
+        realHeight = realWidth / aspectRatio;
+
+        realHeight = Mathf.Clamp(realHeight, minImageSize, maxImageSize);
+        realWidth = realHeight * aspectRatio;
 
         Vector3 newScale = targetRenderer.transform.localScale;
-        newScale.x = realWidth * scaleFactor;  // Width
-        newScale.y = realHeight * scaleFactor; // Height (assuming Z is height)
+        newScale.x = realWidth * xScaleUnitWidth;  // Width
+        newScale.z = realHeight * zScaleUnitHeight; // Height
 
         targetRenderer.transform.localScale = newScale;
 
-        Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.y}m (Aspect Ratio: {(float)imageWidth / imageHeight})");
+        Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.z}m (Aspect Ratio: {(float)receivedImageWidth / receivedImageHeight})");
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)

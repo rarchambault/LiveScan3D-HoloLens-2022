@@ -15,6 +15,9 @@ public class PhotonFusionManager : MonoBehaviour
 
     // Unique key for image data
     private ReliableKey documentImageDataKey = ReliableKey.FromInts(43, 0, 0, 0);
+    private ReliableKey receivedDocumentImageDataKey = ReliableKey.FromInts(44, 0, 0, 0);
+    private List<PlayerRef> receivedBy = new List<PlayerRef>();
+    private bool receivedByAllPlayers = false;
 
     // Store received image data
     private byte[] _receivedDocumentImageData = null;
@@ -76,18 +79,39 @@ public class PhotonFusionManager : MonoBehaviour
             _receivedDocumentImageData = data.ToArray();
             hasNewDocument = true;
             Debug.Log($"Received image data from player {player} (Size: {_receivedDocumentImageData.Length} bytes)");
+
+            if (connectedPlayers.Count <= 1)
+            {
+                receivedByAllPlayers = true;
+            }
+        }
+        else if (key.Equals(receivedDocumentImageDataKey))
+        {
+            if (!receivedBy.Contains(player))
+            {
+                receivedBy.Add(player);
+                Debug.Log("Document received by " + player);
+            }
+
+            if (receivedBy.Count >= connectedPlayers.Count - 1)
+            {
+                Debug.Log("Document received by all connected players");
+                receivedByAllPlayers = true;
+            }
         }
     }
 
     public bool HasNewDocument()
     {
-        return hasNewDocument;
+        return hasNewDocument && receivedByAllPlayers;
     }
 
     // Function to retrieve the received image data
     public byte[] GetReceivedDocument()
     {
         hasNewDocument = false;
+        receivedByAllPlayers = false;
+        receivedBy.Clear();
         return _receivedDocumentImageData;
     }
 

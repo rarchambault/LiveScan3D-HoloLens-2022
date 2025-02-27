@@ -89,7 +89,7 @@ public class PointCloudRenderer : MonoBehaviour
             //{
             //convexHull.GenerateHull(points.ToList(), false, ref vertices, ref triangles, ref normals);
 
-            Debug.Log("Original points: " + points.Length + ", Vertices: " + vertices.Count + ", Triangles: " + triangles.Count + ", Normals: " + normals.Count);
+            //Debug.Log("Original points: " + points.Length + ", Vertices: " + vertices.Count + ", Triangles: " + triangles.Count + ", Normals: " + normals.Count);
 
             ElemRenderer renderer = photonFusionManager.networkObjects[i].GetComponent<ElemRenderer>();
             renderer.TriggerMeshUpdate(points.Length, triangles.Count, points, triangles);
