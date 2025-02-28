@@ -2,13 +2,17 @@
 using GK;
 using System.Collections;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using UnityEngine;
+using Color = UnityEngine.Color;
 
 public class ElemRenderer : NetworkBehaviour
 {
     Mesh mesh;
     public const int maxChunkSize = 1000;
+    public Material particleMaterial;
+    public float particleSize = 0.1f;
 
     [Networked] private bool hasChanged { get; set; }
     //[Networked, Capacity(maxChunkSize)] private NetworkArray<float> vertices { get; }
@@ -17,10 +21,11 @@ public class ElemRenderer : NetworkBehaviour
     //[Networked] private int nPointsRendered { get; set; }
 
     [Networked] private int nVertices { get; set; }
-    [Networked] private int nTriangles { get; set; }
-    //[Networked, Capacity(maxChunkSize)] private NetworkArray<Vector3> vertices { get; }
-    [Networked, Capacity(maxChunkSize)] private NetworkArray<int> triangles { get; }
-    private List<Vector3> vertices = new List<Vector3>();
+    [Networked] private int nColors { get; set; }
+    [Networked] private int nVertices2 { get; set; }
+    [Networked] private int nColors2 { get; set; }
+    [Networked, Capacity(maxChunkSize)] private NetworkArray<Vector3> vertices { get; }
+    [Networked, Capacity(maxChunkSize)] private NetworkArray<Color> colors { get; }
 
     private void Awake()
     {
@@ -36,6 +41,11 @@ public class ElemRenderer : NetworkBehaviour
     {
     }
 
+    public override void Spawned()
+    {
+        UpdateShaderProperties();
+    }
+
     public override void Render()
     {
         if (hasChanged)
@@ -49,16 +59,25 @@ public class ElemRenderer : NetworkBehaviour
         }
     }
 
-    public void TriggerMeshUpdate(int nVertices, int nTriangles, Vector3[] newVertices, List<int> newTriangles)
+    void UpdateShaderProperties()
     {
-        this.nVertices = nVertices;
-        this.nTriangles = nTriangles;
-        this.vertices.Clear();
-        //this.vertices.CopyFrom(newVertices, 0, nVertices);
-        this.vertices.AddRange(newVertices);
+        if (particleMaterial != null)
+        {
+            particleMaterial.SetFloat("_Size", particleSize);
+        }
+    }
 
-        this.triangles.Clear();
-        this.triangles.CopyFrom(newTriangles, 0, nTriangles);
+    public void TriggerMeshUpdate(int nVertices, int nColors, List<Vector3> newVertices, List<Color> newColors)
+    {
+        this.nVertices = Mathf.Min(nVertices, maxChunkSize - 1);
+        this.nColors = Mathf.Min(nColors, maxChunkSize - 1);
+        this.vertices.Clear();
+        this.vertices.CopyFrom(newVertices, 0, this.nVertices);
+        //this.vertices.AddRange(newVertices);
+
+        this.colors.Clear();
+        this.colors.CopyFrom(newColors, 0, this.nColors);
+
         hasChanged = true;
     }
 
@@ -83,22 +102,26 @@ public class ElemRenderer : NetworkBehaviour
 
         mesh = new Mesh();
         List<Vector3> newVertices = new List<Vector3>();
-        List<int> newTriangles = new List<int>();
+        List<Color> newColors = new List<Color>();
 
         for (int i = 0; i < nVertices; i++)
         {
             newVertices.Add(vertices[i]);
         }
 
-        for (int i = 0; i < nTriangles; i++)
+        for (int i = 0; i < nColors; i++)
         {
-            newTriangles.Add(triangles[i]);
+            newColors.Add(colors[i]);
         }
 
-        mesh.SetVertices(newVertices);
+        mesh.vertices = newVertices.ToArray();
+        mesh.colors = newColors.ToArray();
+        mesh.SetIndices(Enumerable.Range(0, nVertices).ToList(), MeshTopology.Points, 0);
+
+        //mesh.SetVertices(newVertices);
         //mesh.SetTriangles(newTriangles, 0);
         //mesh.SetNormals(normals);
-        mesh.RecalculateNormals();
+        //mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
     }

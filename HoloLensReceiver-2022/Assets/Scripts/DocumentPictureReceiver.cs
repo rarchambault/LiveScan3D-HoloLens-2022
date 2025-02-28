@@ -10,6 +10,8 @@ using UnityEngine;
 public class DocumentPictureReceiver : NetworkBehaviour
 {
     public Renderer targetRenderer;
+    public float maxImageSize = 3.0f;
+    public float minImageSize = 1.0f;
 
     private PhotonFusionManager photonFusionManager;
     private TcpListener listener;
@@ -20,8 +22,6 @@ public class DocumentPictureReceiver : NetworkBehaviour
     [Networked] private int receivedImageWidth { get; set; }
     [Networked] private int receivedImageHeight { get; set; }
 
-    private const float maxImageSize = 3.0f;
-    private const float minImageSize = 1.0f;
     private float xScaleUnitWidth;
     private float zScaleUnitHeight;
     private const float pixelToMeter = 0.26f / 1000f; // Convert pixels to meters

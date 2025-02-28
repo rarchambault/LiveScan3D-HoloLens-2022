@@ -93,11 +93,13 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1002025039999346}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 46a3ddbe80ae319449ce8f2d8dd57869, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  particleMaterial: {fileID: 2100000, guid: 30c9fadcd170de64f8c8e51e643d3b69, type: 2}
+  particleSize: 0.005
 --- !u!114 &7260786953554719222
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -146,7 +148,7 @@ Transform:
   m_GameObject: {fileID: 463884454408270117}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0.70710677, z: -0.70710677, w: 0}
-  m_LocalPosition: {x: -0.1, y: 0, z: -0.1}
+  m_LocalPosition: {x: -0.1, y: 0, z: -0.5}
   m_LocalScale: {x: 0.1, y: 0.1, z: 0.1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -239,4 +241,5 @@ MonoBehaviour:
   serverIP: 127.0.0.1
   port: 48004
   targetRenderer: {fileID: 7487332461084757376}
-  photonFusionManager: {fileID: 0}
+  maxImageSize: 3
+  minImageSize: 1

@@ -12,6 +12,8 @@ public class DocumentPictureReceiver : NetworkBehaviour
     public string serverIP = "127.0.0.1";
     public int port = 48004;
     public Renderer targetRenderer;
+    public float maxImageSize = 3.0f;
+    public float minImageSize = 1.0f;
 
     private PhotonFusionManager photonFusionManager;
     private TcpListener listener;
@@ -26,8 +28,6 @@ public class DocumentPictureReceiver : NetworkBehaviour
     private int newWidth = 0;
     private int newHeight = 0;
 
-    private const float maxImageSize = 3.0f;
-    private const float minImageSize = 1.0f;
     private float xScaleUnitWidth;
     private float zScaleUnitHeight;
     private const float pixelToMeter = 0.26f / 1000f; // Convert pixels to meters
@@ -127,6 +127,9 @@ public class DocumentPictureReceiver : NetworkBehaviour
                 {
                     SendImageData(receivedImageData);
                     receivedImageData = null;
+                    // Update networked properties for width and height (ensuring they are synchronized **after** data transmission)
+                    receivedImageWidth = newWidth;
+                    receivedImageHeight = newHeight;
                 }
             }
         }
@@ -134,9 +137,6 @@ public class DocumentPictureReceiver : NetworkBehaviour
         // Check that the image was received here and fully sent through Photon
         if (isProcessingImage && photonFusionManager.HasNewDocument())
         {
-            // Update networked properties for width and height (ensuring they are synchronized **after** data transmission)
-            receivedImageWidth = newWidth;
-            receivedImageHeight = newHeight;
             ApplyTexture();
             isProcessingImage = false;
         }

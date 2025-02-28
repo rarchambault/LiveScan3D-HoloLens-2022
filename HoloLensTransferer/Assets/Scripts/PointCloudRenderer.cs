@@ -78,28 +78,19 @@ public class PointCloudRenderer : MonoBehaviour
                 colors[j] = new Color((float)arrColors[ptIdx + 0] / 256.0f, (float)arrColors[ptIdx + 1] / 256.0f, (float)arrColors[ptIdx + 2] / 256.0f, 1.0f);
             }
 
-            // Convert the point cloud into a mesh
-            List<Vector3> vertices = new List<Vector3>();
-            List<int> triangles = new List<int>();
-            List<Vector3> normals = new List<Vector3>();
+            // Thin the point cloud
+            List<Vector3> newPoints = new List<Vector3>();
+            List<Color> newColors = new List<Color>();
 
-            ConvexHullCalculator convexHull = new ConvexHullCalculator();
+            float voxelSize = 0.02f;
 
-            //try
-            //{
-            //convexHull.GenerateHull(points.ToList(), false, ref vertices, ref triangles, ref normals);
-
-            //Debug.Log("Original points: " + points.Length + ", Vertices: " + vertices.Count + ", Triangles: " + triangles.Count + ", Normals: " + normals.Count);
+            VoxelDownsample(points.ToList(), colors.ToList(), ref newPoints, ref newColors, voxelSize);
+            Debug.Log("Original points: " + points.Length + ", new points: " + newPoints.Count);
 
             ElemRenderer renderer = photonFusionManager.networkObjects[i].GetComponent<ElemRenderer>();
-            renderer.TriggerMeshUpdate(points.Length, triangles.Count, points, triangles);
+            renderer.TriggerMeshUpdate(newPoints.Count, newColors.Count, newPoints, newColors);
 
             offset += nPointsToRender;
-            //}
-            //catch
-            //{
-            //    Debug.Log("A problem occurred with QuickHull");
-            //}
         }
     }
 
@@ -128,5 +119,47 @@ public class PointCloudRenderer : MonoBehaviour
         //}
 
         photonFusionManager.DestroyNetworkObjects(nElems);
+    }
+
+    public void VoxelDownsample(List<Vector3> originalPoints, List<Color> originalColors, ref List<Vector3> newPoints, ref List<Color> newColors, float voxelSize)
+    {
+        Dictionary<Vector3Int, List<(Vector3, Color)>> voxelMap = new Dictionary<Vector3Int, List<(Vector3, Color)>>();
+
+        for (int i = 0; i < originalPoints.Count; i++)
+        {
+            Vector3 point = originalPoints[i];
+            Color color = originalColors[i];
+
+            Vector3Int voxelKey = new Vector3Int(
+                Mathf.FloorToInt(point.x / voxelSize),
+                Mathf.FloorToInt(point.y / voxelSize),
+                Mathf.FloorToInt(point.z / voxelSize)
+            );
+
+            if (!voxelMap.ContainsKey(voxelKey))
+                voxelMap[voxelKey] = new List<(Vector3, Color)>();
+
+            voxelMap[voxelKey].Add((point, color));
+        }
+
+        // Compute the average position and color for each voxel
+        foreach (var voxel in voxelMap)
+        {
+            Vector3 avgPosition = Vector3.zero;
+            Color avgColor = Color.black;
+            int count = voxel.Value.Count;
+
+            foreach (var (pos, col) in voxel.Value)
+            {
+                avgPosition += pos;
+                avgColor += col; // Convert Color to Vector4 for addition
+            }
+
+            avgPosition /= count;
+            avgColor /= count; // Averaging the color
+
+            newPoints.Add(avgPosition);
+            newColors.Add(avgColor);
+        }
     }
 }
