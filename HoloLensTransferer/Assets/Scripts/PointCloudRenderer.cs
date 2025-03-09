@@ -1,28 +1,33 @@
-﻿using Fusion;
-using GK;
+﻿using Unity.WebRTC;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
 public class PointCloudRenderer : MonoBehaviour
 {
-    public int maxChunkSize = 65535; // If you want to whole point cloud
-    //public int maxChunkSize = 1361; // If you only want a small portion of the points
+    public int maxChunkSize = 65535;
     public float pointSize = 0.005f;
     public GameObject pointCloudElem;
     public Material pointCloudMaterial;
-
     public int maxNumElems = 1;
-    //public int maxNumElems = 4;
 
-    //List<GameObject> elems;
-
-    public PhotonFusionManager photonFusionManager;
+    public WebRTCManager webRTCManager;
+    private List<GameObject> pointCloudObjects = new List<GameObject>();
 
     void Start()
     {
-        //elems = new List<GameObject>();
         UpdatePointSize();
+
+        if (webRTCManager == null)
+        {
+            webRTCManager = FindObjectOfType<WebRTCManager>();
+            if (webRTCManager == null)
+            {
+                Debug.LogError("WebRTCManager not found!");
+                return;
+            }
+        }
     }
 
     void Update()
@@ -41,92 +46,52 @@ public class PointCloudRenderer : MonoBehaviour
 
     public void Render(float[] arrVertices, byte[] arrColors)
     {
-        int nPoints, nChunks;
-        if (arrVertices == null || arrColors == null)
-        {
-            nPoints = 0;
-            nChunks = 0;
-        }
-        else
-        {
-            nPoints = arrVertices.Length / 3;
-            nChunks = 1 + nPoints / maxChunkSize;
-        }
+        if (arrVertices == null || arrColors == null) return;
 
-        nChunks = Mathf.Min(nChunks, maxNumElems);
+        int nPoints = arrVertices.Length / 3;
+        int nChunks = Mathf.Min(1 + nPoints / maxChunkSize, maxNumElems);
 
-        if (photonFusionManager.networkObjects.Count < nChunks)
-            AddElems(nChunks - photonFusionManager.networkObjects.Count);
-        if (photonFusionManager.networkObjects.Count > nChunks)
-            RemoveElems(photonFusionManager.networkObjects.Count - nChunks);
+        while (pointCloudObjects.Count < nChunks)
+            AddElem();
+        while (pointCloudObjects.Count > nChunks)
+            RemoveElem();
 
         int offset = 0;
         for (int i = 0; i < nChunks; i++)
         {
-            int nPointsToRender = System.Math.Min(maxChunkSize, nPoints - offset);
+            int nPointsToRender = Mathf.Min(maxChunkSize, nPoints - offset);
+            Vector3[] points = new Vector3[nPointsToRender];
+            Color[] colors = new Color[nPointsToRender];
 
-            Vector3[] points = new Vector3[nPoints];
-            int[] indices = new int[nPoints];
-            Color[] colors = new Color[nPoints];
-
-            for (int j = 0; j < nPoints; j++)
+            for (int j = 0; j < nPointsToRender; j++)
             {
-                int ptIdx = 3 * j;
-
-                points[j] = new Vector3(arrVertices[ptIdx + 0], arrVertices[ptIdx + 1], -arrVertices[ptIdx + 2]);
-                indices[j] = j;
-                colors[j] = new Color((float)arrColors[ptIdx + 0] / 256.0f, (float)arrColors[ptIdx + 1] / 256.0f, (float)arrColors[ptIdx + 2] / 256.0f, 1.0f);
+                int ptIdx = 3 * (offset + j);
+                points[j] = new Vector3(arrVertices[ptIdx], arrVertices[ptIdx + 1], -arrVertices[ptIdx + 2]);
+                colors[j] = new Color(arrColors[ptIdx] / 256f, arrColors[ptIdx + 1] / 256f, arrColors[ptIdx + 2] / 256f, 1.0f);
             }
 
-            // Convert the point cloud into a mesh
-            List<Vector3> vertices = new List<Vector3>();
-            List<int> triangles = new List<int>();
-            List<Vector3> normals = new List<Vector3>();
+            Mesh mesh = new Mesh { vertices = points, colors = colors };
+            mesh.SetIndices(Enumerable.Range(0, points.Length).ToArray(), MeshTopology.Points, 0);
 
-            ConvexHullCalculator convexHull = new ConvexHullCalculator();
-
-            //try
-            //{
-            //convexHull.GenerateHull(points.ToList(), false, ref vertices, ref triangles, ref normals);
-
-            Debug.Log("Original points: " + points.Length + ", Vertices: " + vertices.Count + ", Triangles: " + triangles.Count + ", Normals: " + normals.Count);
-
-            ElemRenderer renderer = photonFusionManager.networkObjects[i].GetComponent<ElemRenderer>();
-            renderer.TriggerMeshUpdate(points.Length, triangles.Count, points, triangles);
-
+            pointCloudObjects[i].GetComponent<MeshFilter>().mesh = mesh;
             offset += nPointsToRender;
-            //}
-            //catch
-            //{
-            //    Debug.Log("A problem occurred with QuickHull");
-            //}
         }
     }
 
-    void AddElems(int nElems)
+    void AddElem()
     {
-        for (int i = 0; i < nElems; i++)
+        GameObject newElem = Instantiate(pointCloudElem, transform);
+        newElem.transform.localPosition = Vector3.zero;
+        newElem.transform.localRotation = Quaternion.identity;
+        pointCloudObjects.Add(newElem);
+    }
+
+    void RemoveElem()
+    {
+        if (pointCloudObjects.Count > 0)
         {
-            //GameObject newElem = GameObject.Instantiate(pointCloudElem);
-            //newElem.transform.parent = transform;
-            //newElem.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
-            //newElem.transform.localRotation = Quaternion.identity;
-            //newElem.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
-
-            //elems.Add(newElem);
-
-            photonFusionManager.SpawnNetworkObject(pointCloudElem, new Vector3(0.0f, 0.0f, 0.0f), Quaternion.identity);
+            Destroy(pointCloudObjects[0]);
+            pointCloudObjects.RemoveAt(0);
         }
-    }
-
-    void RemoveElems(int nElems)
-    {
-        //for (int i = 0; i < nElems; i++)
-        //{
-        //    Destroy(elems[0]);
-        //    elems.Remove(elems[0]);
-        //}
-
-        photonFusionManager.DestroyNetworkObjects(nElems);
     }
 }

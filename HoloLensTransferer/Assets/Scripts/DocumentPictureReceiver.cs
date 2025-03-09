@@ -1,4 +1,4 @@
-using Fusion;
+using Unity.WebRTC;
 using System;
 using System.Collections;
 using System.IO;
@@ -7,12 +7,12 @@ using System.Net.Sockets;
 using System.Threading;
 using UnityEngine;
 
-public class DocumentPictureReceiver : NetworkBehaviour
+public class DocumentPictureReceiver : MonoBehaviour
 {
     public string serverIP = "127.0.0.1";
     public int port = 48004;
     public Renderer targetRenderer;
-    public PhotonFusionManager photonFusionManager;
+    public WebRTCManager webRTCManager;
 
     private TcpListener listener;
     private Thread listenerThread;
@@ -21,8 +21,8 @@ public class DocumentPictureReceiver : NetworkBehaviour
     private const float IMAGE_TIMEOUT = 10f;
 
     private byte[] receivedImageData;
-    [Networked] private int receivedImageWidth { get; set; }
-    [Networked] private int receivedImageHeight { get; set; }
+    private int receivedImageWidth;
+    private int receivedImageHeight;
 
     private const float maxImageSize = 0.1f;
     private const float pixelToMeter = 0.26f / 1000f; // Convert pixels to meters
@@ -30,7 +30,7 @@ public class DocumentPictureReceiver : NetworkBehaviour
 
     private readonly object lockObject = new object(); // Ensure thread safety
 
-    public override void Spawned()
+    void Start()
     {
         if (targetRenderer == null)
         {
@@ -40,21 +40,18 @@ public class DocumentPictureReceiver : NetworkBehaviour
 
         targetRenderer.enabled = false; // Hide initially
 
-        photonFusionManager = GameObject.FindObjectOfType<PhotonFusionManager>();
+        webRTCManager = GameObject.FindObjectOfType<WebRTCManager>();
 
-        if (photonFusionManager == null)
+        if (webRTCManager == null)
         {
-            Debug.LogError("PhotonFusionManager is not assigned!");
+            Debug.LogError("WebRTCManager is not assigned!");
             return;
         }
 
-        if (Object.HasStateAuthority) // Only the host should receive images
-        {
-            isRunning = true;
-            listenerThread = new Thread(ListenForImages);
-            listenerThread.IsBackground = true;
-            listenerThread.Start();
-        }
+        isRunning = true;
+        listenerThread = new Thread(ListenForImages);
+        listenerThread.IsBackground = true;
+        listenerThread.Start();
     }
 
     void ListenForImages()
@@ -71,17 +68,13 @@ public class DocumentPictureReceiver : NetworkBehaviour
                 using (NetworkStream stream = client.GetStream())
                 using (BinaryReader reader = new BinaryReader(stream))
                 {
-                    // Read image dimensions first
                     int height = reader.ReadInt32();
                     int width = reader.ReadInt32();
-
-                    // Read image size
                     int imageSize = reader.ReadInt32();
                     byte[] imageData = reader.ReadBytes(imageSize);
 
                     if (imageData.Length > 0)
                     {
-                        // Store data safely to be processed in the main thread
                         lock (lockObject)
                         {
                             receivedImageData = imageData;
@@ -100,22 +93,16 @@ public class DocumentPictureReceiver : NetworkBehaviour
 
     void Update()
     {
-        // Process image only on the main thread
         if (receivedImageData != null && !isProcessingImage)
         {
             isProcessingImage = true;
-
-            if (Object.HasStateAuthority)
+            lock (lockObject)
             {
-                lock (lockObject) // Ensure thread safety
-                {
-                    SendImageData(receivedImageData, receivedImageWidth, receivedImageHeight);
-                    receivedImageData = null;
-                }
+                SendImageData(receivedImageData, receivedImageWidth, receivedImageHeight);
+                receivedImageData = null;
             }
         }
 
-        // Hide renderer if no new image has been received in the timeout period
         if (Time.time - lastImageTime > IMAGE_TIMEOUT && targetRenderer.enabled)
         {
             targetRenderer.enabled = false;
@@ -125,22 +112,18 @@ public class DocumentPictureReceiver : NetworkBehaviour
 
     private void SendImageData(byte[] imageData, int width, int height)
     {
-        Debug.Log("Sending image data via PhotonFusionManager...");
+        Debug.Log("Sending image data via WebRTCManager...");
 
-        // Send the image using your PhotonFusionManager's SendDocument function
-        photonFusionManager.SendDocument(imageData);
-
-        // Update networked properties for width and height (ensuring they are synchronized **after** data transmission)
+        webRTCManager.SendDocument(imageData);
         receivedImageWidth = width;
         receivedImageHeight = height;
 
-        Debug.Log($"Updated network properties: Width={receivedImageWidth}, Height={receivedImageHeight}");
+        Debug.Log($"Updated properties: Width={receivedImageWidth}, Height={receivedImageHeight}");
     }
 
-    public override void Render()
+    public void Render()
     {
-        // Check that the image was received here and fully sent through Photon
-        if (isProcessingImage && photonFusionManager.HasNewDocument())
+        if (isProcessingImage && webRTCManager.HasNewDocument())
         {
             StartCoroutine(ApplyTexture(receivedImageWidth, receivedImageHeight));
             isProcessingImage = false;
@@ -149,12 +132,12 @@ public class DocumentPictureReceiver : NetworkBehaviour
 
     IEnumerator ApplyTexture(int width, int height)
     {
-        yield return null; // Ensure it runs on the main thread
+        yield return null;
 
-        byte[] imageData = photonFusionManager.GetReceivedDocument(); // Get image data from PhotonFusionManager
+        byte[] imageData = webRTCManager.GetReceivedDocument();
         if (imageData == null || imageData.Length == 0)
         {
-            Debug.LogError("Failed to retrieve image data from PhotonFusionManager.");
+            Debug.LogError("Failed to retrieve image data from WebRTCManager.");
             yield break;
         }
 
@@ -166,7 +149,6 @@ public class DocumentPictureReceiver : NetworkBehaviour
             targetRenderer.enabled = true;
             lastImageTime = Time.time;
 
-            // Scale the renderer plane to match the aspect ratio
             AdjustRendererScale(width, height);
         }
         else
@@ -180,19 +162,18 @@ public class DocumentPictureReceiver : NetworkBehaviour
         float realWidth = imageWidth * pixelToMeter;
         float realHeight = imageHeight * pixelToMeter;
 
-        // Calculate scale factor to fit within maxSize while keeping aspect ratio
         float scaleFactor = Mathf.Min(maxImageSize / realWidth, maxImageSize / realHeight, 1.0f);
 
         Vector3 newScale = targetRenderer.transform.localScale;
-        newScale.x = realWidth * scaleFactor;  // Width
-        newScale.y = realHeight * scaleFactor; // Height (assuming Z is height)
+        newScale.x = realWidth * scaleFactor;
+        newScale.y = realHeight * scaleFactor;
 
         targetRenderer.transform.localScale = newScale;
 
         Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.y}m (Aspect Ratio: {(float)imageWidth / imageHeight})");
     }
 
-    public override void Despawned(NetworkRunner runner, bool hasState)
+    private void OnDestroy()
     {
         isRunning = false;
         listener?.Stop();
