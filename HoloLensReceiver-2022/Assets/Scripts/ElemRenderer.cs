@@ -1,51 +1,44 @@
-﻿using Fusion;
-using GK;
-using System.Collections;
+﻿using UnityEngine;
+using Unity.WebRTC;
+using System;
 using System.Collections.Generic;
-using System.Linq;
-using UnityEngine;
 
-public class ElemRenderer : NetworkBehaviour
+public class ElemRenderer : MonoBehaviour
 {
-    Mesh mesh;
-    public const int maxChunkSize = 1000;
+    private Mesh mesh;
+    private const int maxChunkSize = 1000;
 
-    [Networked] private bool hasChanged { get; set; }
-    //[Networked, Capacity(maxChunkSize)] private NetworkArray<float> vertices { get; }
-    //[Networked, Capacity(maxChunkSize)] private NetworkArray<byte> colors { get; }
-    //[Networked] private int nPointsToRender { get; set; }
-    //[Networked] private int nPointsRendered { get; set; }
-
-    [Networked] private int nVertices { get; set; }
-    [Networked] private int nTriangles { get; set; }
-    //[Networked, Capacity(maxChunkSize)] private NetworkArray<Vector3> vertices { get; }
-    [Networked, Capacity(maxChunkSize)] private NetworkArray<int> triangles { get; }
+    private bool hasChanged = false;
+    private int nVertices = 0;
+    private int nTriangles = 0;
     private List<Vector3> vertices = new List<Vector3>();
+    private List<int> triangles = new List<int>();
 
-    private void Awake()
-    {
-    }
+    private WebRTCManager webRTCManager;
 
-    // Use this for initialization
     void Start()
     {
+        webRTCManager = GameObject.FindObjectOfType<WebRTCManager>();
+
+        if (webRTCManager == null)
+        {
+            Debug.LogError("WebRTCManager is not assigned!");
+            return;
+        }
+
+        // Register to listen for mesh data from WebRTCManager
+        webRTCManager.OnMeshDataReceived += TriggerMeshUpdate;
+
+        mesh = new Mesh();
     }
 
-    // Update is called once per frame
     void Update()
     {
-    }
-
-    public override void Render()
-    {
+        // Optionally handle continuous updates here if needed
         if (hasChanged)
         {
             UpdateMesh();
-
-            if (!Object.HasStateAuthority)
-            {
-                hasChanged = false;
-            }
+            hasChanged = false;
         }
     }
 
@@ -54,32 +47,20 @@ public class ElemRenderer : NetworkBehaviour
         this.nVertices = nVertices;
         this.nTriangles = nTriangles;
         this.vertices.Clear();
-        //this.vertices.CopyFrom(newVertices, 0, nVertices);
         this.vertices.AddRange(newVertices);
 
         this.triangles.Clear();
-        this.triangles.CopyFrom(newTriangles, 0, nTriangles);
+        this.triangles.AddRange(newTriangles);
+
         hasChanged = true;
     }
-
-    //public void TriggerMeshUpdateOld(float[] arrVertices, byte[] arrColors, int nPointsToRender, int nPointsRendered)
-    //{
-    //    vertices.Clear();
-    //    //vertices.CopyFrom(arrVertices, nPointsRendered * 3, nPointsToRender * 3);
-    //    vertices.AddRange(arrVertices);
-
-    //    colors.Clear();
-    //    //colors.CopyFrom(arrColors, nPointsRendered * 3, nPointsToRender * 3);
-    //    colors.AddRange(arrColors);
-    //    this.nPointsToRender = nPointsToRender;
-    //    this.nPointsRendered = nPointsRendered;
-    //    hasChanged = true;
-    //}
 
     public void UpdateMesh()
     {
         if (mesh != null)
+        {
             Destroy(mesh);
+        }
 
         mesh = new Mesh();
         List<Vector3> newVertices = new List<Vector3>();
@@ -96,44 +77,18 @@ public class ElemRenderer : NetworkBehaviour
         }
 
         mesh.SetVertices(newVertices);
-        //mesh.SetTriangles(newTriangles, 0);
-        //mesh.SetNormals(normals);
+        mesh.SetTriangles(newTriangles, 0);
         mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
     }
 
-    public void UpdateMeshOld(NetworkArray<float> arrVertices, NetworkArray<byte> arrColors, int nPointsToRender, int nPointsRendered)
+    void OnDestroy()
     {
-        int nPoints;
-
-        if (arrVertices.Length <= 0 || arrColors.Length <= 0)
-            nPoints = 0;
-        else
-            //nPoints = System.Math.Min(nPointsToRender, (arrVertices.Length / 3) - nPointsRendered);
-            nPoints = nPointsToRender;
-        nPoints = System.Math.Min(nPoints, maxChunkSize);
-
-        Vector3[] points = new Vector3[nPoints];
-        int[] indices = new int[nPoints];
-        Color[] colors = new Color[nPoints];
-
-        for (int i = 0; i < nPoints; i++)
+        // Unsubscribe from WebRTCManager event
+        if (webRTCManager != null)
         {
-            //int ptIdx = 3 * (nPointsRendered + i);
-            int ptIdx = 3 * i;
-
-            points[i] = new Vector3(arrVertices[ptIdx + 0], arrVertices[ptIdx + 1], -arrVertices[ptIdx + 2]);
-            indices[i] = i;
-            colors[i] = new Color((float)arrColors[ptIdx + 0] / 256.0f, (float)arrColors[ptIdx + 1] / 256.0f, (float)arrColors[ptIdx + 2] / 256.0f, 1.0f);
+            webRTCManager.OnMeshDataReceived -= TriggerMeshUpdate;
         }
-
-        if (mesh != null)
-            Destroy(mesh);
-        mesh = new Mesh();
-        mesh.vertices = points;
-        mesh.colors = colors;
-        mesh.SetIndices(indices, MeshTopology.Points, 0);
-        GetComponent<MeshFilter>().mesh = mesh;
     }
 }

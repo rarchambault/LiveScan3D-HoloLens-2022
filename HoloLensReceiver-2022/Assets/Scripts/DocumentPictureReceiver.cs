@@ -1,24 +1,15 @@
-using Fusion;
-using System;
-using System.Collections;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
 using UnityEngine;
+using Unity.WebRTC;
+using System;
 
-public class DocumentPictureReceiver : NetworkBehaviour
+public class DocumentPictureReceiver : MonoBehaviour
 {
-    public string serverIP = "127.0.0.1";
-    public int port = 48004;
     public Renderer targetRenderer;
-    public PhotonFusionManager photonFusionManager;
+    public WebRTCManager webRTCManager;
 
-    private TcpListener listener;
-    private Thread listenerThread;
-    private bool isRunning = false;
     private float lastImageTime = 0f;
     private const float IMAGE_TIMEOUT = 10f;
+
     [Networked] private int receivedImageWidth { get; set; }
     [Networked] private int receivedImageHeight { get; set; }
 
@@ -27,7 +18,7 @@ public class DocumentPictureReceiver : NetworkBehaviour
 
     private readonly object lockObject = new object(); // Ensure thread safety
 
-    public override void Spawned()
+    void Start()
     {
         if (targetRenderer == null)
         {
@@ -37,13 +28,16 @@ public class DocumentPictureReceiver : NetworkBehaviour
 
         targetRenderer.enabled = false; // Hide initially
 
-        photonFusionManager = GameObject.FindObjectOfType<PhotonFusionManager>();
+        webRTCManager = GameObject.FindObjectOfType<WebRTCManager>();
 
-        if (photonFusionManager == null)
+        if (webRTCManager == null)
         {
-            Debug.LogError("PhotonFusionManager is not assigned!");
+            Debug.LogError("WebRTCManager is not assigned!");
             return;
         }
+
+        // Register to listen for messages from WebRTC data channel
+        webRTCManager.OnDocumentImageReceived += OnDocumentImageReceived;
     }
 
     void Update()
@@ -56,22 +50,22 @@ public class DocumentPictureReceiver : NetworkBehaviour
         }
     }
 
-    public override void Render()
+    public void Render()
     {
         // Only apply the texture when width and height are updated (indicating image data is received)
-        if (photonFusionManager.HasNewDocument())
+        if (webRTCManager.HasNewDocument())
         {
-            Debug.Log("Found new image data on PhotonFusionManager, starting to display it");
+            Debug.Log("Found new image data on WebRTCManager, starting to display it");
             ApplyTexture(receivedImageWidth, receivedImageHeight);
         }
     }
 
     private void ApplyTexture(int width, int height)
     {
-        byte[] imageData = photonFusionManager.GetReceivedDocument(); // Get image data from PhotonFusionManager
+        byte[] imageData = webRTCManager.GetReceivedDocument(); // Get image data from WebRTCManager
         if (imageData == null || imageData.Length == 0)
         {
-            Debug.LogError("Failed to retrieve image data from PhotonFusionManager.");
+            Debug.LogError("Failed to retrieve image data from WebRTCManager.");
             return;
         }
 
@@ -110,10 +104,22 @@ public class DocumentPictureReceiver : NetworkBehaviour
         Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.y}m (Aspect Ratio: {(float)imageWidth / imageHeight})");
     }
 
-    public override void Despawned(NetworkRunner runner, bool hasState)
+    private void OnDocumentImageReceived(byte[] imageData, int width, int height)
     {
-        isRunning = false;
-        listener?.Stop();
-        listenerThread?.Abort();
+        // Called when WebRTCManager receives image data
+        receivedImageWidth = width;
+        receivedImageHeight = height;
+
+        // Save the data for rendering
+        webRTCManager.SetReceivedDocument(imageData);
+    }
+
+    void OnDestroy()
+    {
+        // Unsubscribe from WebRTCManager event
+        if (webRTCManager != null)
+        {
+            webRTCManager.OnDocumentImageReceived -= OnDocumentImageReceived;
+        }
     }
 }
