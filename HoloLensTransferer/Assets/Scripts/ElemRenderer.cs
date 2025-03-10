@@ -22,8 +22,6 @@ public class ElemRenderer : NetworkBehaviour
 
     [Networked] private int nVertices { get; set; }
     [Networked] private int nColors { get; set; }
-    [Networked] private int nVertices2 { get; set; }
-    [Networked] private int nColors2 { get; set; }
     [Networked, Capacity(maxChunkSize)] private NetworkArray<Vector3> vertices { get; }
     [Networked, Capacity(maxChunkSize)] private NetworkArray<Color> colors { get; }
 

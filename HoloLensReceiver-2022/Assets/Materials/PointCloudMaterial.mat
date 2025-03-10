@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: PointCloudMaterial
-  m_Shader: {fileID: 4800000, guid: c967a405639df2a479b85b052874775b, type: 3}
+  m_Shader: {fileID: 4800000, guid: a410d766a911d4e449dbb07b714e8553, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -95,7 +95,7 @@ Material:
     - _OcclusionStrength: 1
     - _Parallax: 0.02
     - _PointSize: 0.005
-    - _Size: 0.005
+    - _Size: 0.015
     - _SmoothnessTextureChannel: 0
     - _SoftParticlesEnabled: 0
     - _SoftParticlesFarFadeDistance: 1

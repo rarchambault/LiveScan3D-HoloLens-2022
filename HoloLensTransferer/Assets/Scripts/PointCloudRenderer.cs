@@ -106,7 +106,7 @@ public class PointCloudRenderer : MonoBehaviour
 
             //elems.Add(newElem);
 
-            photonFusionManager.SpawnNetworkObject(pointCloudElem, new Vector3(0.0f, 0.0f, 0.0f), Quaternion.identity);
+            photonFusionManager.SpawnNetworkObject(pointCloudElem, new Vector3(0.0f, 0.0f, 1.0f), Quaternion.identity);
         }
     }
 

@@ -99,7 +99,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   particleMaterial: {fileID: 2100000, guid: a625f06348ad67b4bac4e6aac3264b35, type: 2}
-  particleSize: 0.005
+  particleSize: 0.015
 --- !u!114 &7260786953554719222
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -241,6 +241,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   targetRenderer: {fileID: 9164001801940079612}
+  maxImageSize: 4
+  minImageSize: 2
 --- !u!114 &2820901727056358228
 MonoBehaviour:
   m_ObjectHideFlags: 0

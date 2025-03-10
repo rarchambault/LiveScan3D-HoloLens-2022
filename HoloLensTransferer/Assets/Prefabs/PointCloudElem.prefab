@@ -99,7 +99,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   particleMaterial: {fileID: 2100000, guid: 30c9fadcd170de64f8c8e51e643d3b69, type: 2}
-  particleSize: 0.005
+  particleSize: 0.015
 --- !u!114 &7260786953554719222
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -241,5 +241,5 @@ MonoBehaviour:
   serverIP: 127.0.0.1
   port: 48004
   targetRenderer: {fileID: 7487332461084757376}
-  maxImageSize: 3
-  minImageSize: 1
+  maxImageSize: 4
+  minImageSize: 2
