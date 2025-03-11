@@ -1,40 +1,27 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using System.Linq;
 using Unity.WebRTC;
-using System;
-using System.Collections.Generic;
+using UnityEngine;
 
 public class ElemRenderer : MonoBehaviour
 {
     private Mesh mesh;
-    private const int maxChunkSize = 1000;
+    public const int maxChunkSize = 1000;
 
-    private bool hasChanged = false;
-    private int nVertices = 0;
-    private int nTriangles = 0;
+    private bool hasChanged;
+    private int nVertices;
+    private int nTriangles;
     private List<Vector3> vertices = new List<Vector3>();
     private List<int> triangles = new List<int>();
 
-    private WebRTCManager webRTCManager;
-
     void Start()
     {
-        webRTCManager = GameObject.FindObjectOfType<WebRTCManager>();
-
-        if (webRTCManager == null)
-        {
-            Debug.LogError("WebRTCManager is not assigned!");
-            return;
-        }
-
-        // Register to listen for mesh data from WebRTCManager
-        webRTCManager.OnMeshDataReceived += TriggerMeshUpdate;
-
         mesh = new Mesh();
+        GetComponent<MeshFilter>().mesh = mesh;
     }
 
     void Update()
     {
-        // Optionally handle continuous updates here if needed
         if (hasChanged)
         {
             UpdateMesh();
@@ -46,49 +33,24 @@ public class ElemRenderer : MonoBehaviour
     {
         this.nVertices = nVertices;
         this.nTriangles = nTriangles;
-        this.vertices.Clear();
-        this.vertices.AddRange(newVertices);
+        vertices.Clear();
+        vertices.AddRange(newVertices);
 
-        this.triangles.Clear();
-        this.triangles.AddRange(newTriangles);
-
+        triangles.Clear();
+        triangles.AddRange(newTriangles);
         hasChanged = true;
     }
 
-    public void UpdateMesh()
+    private void UpdateMesh()
     {
         if (mesh != null)
-        {
             Destroy(mesh);
-        }
 
         mesh = new Mesh();
-        List<Vector3> newVertices = new List<Vector3>();
-        List<int> newTriangles = new List<int>();
-
-        for (int i = 0; i < nVertices; i++)
-        {
-            newVertices.Add(vertices[i]);
-        }
-
-        for (int i = 0; i < nTriangles; i++)
-        {
-            newTriangles.Add(triangles[i]);
-        }
-
-        mesh.SetVertices(newVertices);
-        mesh.SetTriangles(newTriangles, 0);
+        mesh.SetVertices(vertices);
+        mesh.SetTriangles(triangles, 0);
         mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
-    }
-
-    void OnDestroy()
-    {
-        // Unsubscribe from WebRTCManager event
-        if (webRTCManager != null)
-        {
-            webRTCManager.OnMeshDataReceived -= TriggerMeshUpdate;
-        }
     }
 }

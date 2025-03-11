@@ -1,13 +1,14 @@
-using Unity.WebRTC;
+using Fusion;
 using System;
 using System.Collections;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using Unity.WebRTC;
 using UnityEngine;
 
-public class DocumentPictureReceiver : MonoBehaviour
+public class DocumentPictureReceiver : NetworkBehaviour
 {
     public string serverIP = "127.0.0.1";
     public int port = 48004;
@@ -21,8 +22,10 @@ public class DocumentPictureReceiver : MonoBehaviour
     private const float IMAGE_TIMEOUT = 10f;
 
     private byte[] receivedImageData;
-    private int receivedImageWidth;
-    private int receivedImageHeight;
+    private int newImageWidth;
+    private int newImageHeight;
+    [Networked] private int receivedImageWidth { get; set; }
+    [Networked] private int receivedImageHeight { get; set; }
 
     private const float maxImageSize = 0.1f;
     private const float pixelToMeter = 0.26f / 1000f; // Convert pixels to meters
@@ -78,8 +81,8 @@ public class DocumentPictureReceiver : MonoBehaviour
                         lock (lockObject)
                         {
                             receivedImageData = imageData;
-                            receivedImageWidth = width;
-                            receivedImageHeight = height;
+                            newImageWidth = width;
+                            newImageHeight = height;
                         }
                     }
                 }
@@ -98,7 +101,7 @@ public class DocumentPictureReceiver : MonoBehaviour
             isProcessingImage = true;
             lock (lockObject)
             {
-                SendImageData(receivedImageData, receivedImageWidth, receivedImageHeight);
+                SendImageData(receivedImageData, newImageWidth, newImageHeight);
                 receivedImageData = null;
             }
         }
@@ -107,6 +110,12 @@ public class DocumentPictureReceiver : MonoBehaviour
         {
             targetRenderer.enabled = false;
             Debug.Log("No new image in over " + IMAGE_TIMEOUT + " seconds, hiding display");
+        }
+
+        if (isProcessingImage)
+        {
+            StartCoroutine(ApplyTexture(receivedImageWidth, receivedImageHeight));
+            isProcessingImage = false;
         }
     }
 
@@ -119,15 +128,6 @@ public class DocumentPictureReceiver : MonoBehaviour
         receivedImageHeight = height;
 
         Debug.Log($"Updated properties: Width={receivedImageWidth}, Height={receivedImageHeight}");
-    }
-
-    public void Render()
-    {
-        if (isProcessingImage && webRTCManager.HasNewDocument())
-        {
-            StartCoroutine(ApplyTexture(receivedImageWidth, receivedImageHeight));
-            isProcessingImage = false;
-        }
     }
 
     IEnumerator ApplyTexture(int width, int height)

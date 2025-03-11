@@ -1,8 +1,9 @@
-using UnityEngine;
-using Unity.WebRTC;
+using Fusion;
 using System;
+using Unity.WebRTC;
+using UnityEngine;
 
-public class DocumentPictureReceiver : MonoBehaviour
+public class DocumentPictureReceiver : NetworkBehaviour
 {
     public Renderer targetRenderer;
     public WebRTCManager webRTCManager;
@@ -35,9 +36,6 @@ public class DocumentPictureReceiver : MonoBehaviour
             Debug.LogError("WebRTCManager is not assigned!");
             return;
         }
-
-        // Register to listen for messages from WebRTC data channel
-        webRTCManager.OnDocumentImageReceived += OnDocumentImageReceived;
     }
 
     void Update()
@@ -48,10 +46,7 @@ public class DocumentPictureReceiver : MonoBehaviour
             targetRenderer.enabled = false;
             Debug.Log("No new image in over " + IMAGE_TIMEOUT + " seconds, hiding display");
         }
-    }
 
-    public void Render()
-    {
         // Only apply the texture when width and height are updated (indicating image data is received)
         if (webRTCManager.HasNewDocument())
         {
@@ -102,24 +97,5 @@ public class DocumentPictureReceiver : MonoBehaviour
         targetRenderer.transform.localScale = newScale;
 
         Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.y}m (Aspect Ratio: {(float)imageWidth / imageHeight})");
-    }
-
-    private void OnDocumentImageReceived(byte[] imageData, int width, int height)
-    {
-        // Called when WebRTCManager receives image data
-        receivedImageWidth = width;
-        receivedImageHeight = height;
-
-        // Save the data for rendering
-        webRTCManager.SetReceivedDocument(imageData);
-    }
-
-    void OnDestroy()
-    {
-        // Unsubscribe from WebRTCManager event
-        if (webRTCManager != null)
-        {
-            webRTCManager.OnDocumentImageReceived -= OnDocumentImageReceived;
-        }
     }
 }

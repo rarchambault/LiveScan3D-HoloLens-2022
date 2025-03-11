@@ -67,9 +67,7 @@ namespace Fusion {
       }
     }
 
-    public NetworkPrefabId GetPrefabId(NetworkRunner runner, NetworkObjectGuid prefabGuid) {
-      return runner.Prefabs.GetId(prefabGuid);
-    }
+
 
     protected virtual NetworkObject InstantiatePrefab(NetworkRunner runner, NetworkObject prefab) {
       return Instantiate(prefab);

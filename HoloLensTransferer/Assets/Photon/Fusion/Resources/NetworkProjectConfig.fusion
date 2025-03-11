@@ -13,7 +13,6 @@
     "NetworkIdIsObjectName": false,
     "HideNetworkObjectInactivityGuard": false,
     "AllowClientServerModesInWebGL": false,
-    "ClientsRecordFrameAndPacketTimingTraces": false,
     "Simulation": {
         "InputDataWordCount": 0,
         "ReplicationFeatures": 1,

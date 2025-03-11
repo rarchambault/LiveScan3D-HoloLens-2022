@@ -1,33 +1,25 @@
-﻿using Unity.WebRTC;
-using System;
+﻿using Fusion;
+using GK;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
 public class PointCloudRenderer : MonoBehaviour
 {
-    public int maxChunkSize = 65535;
+    public int maxChunkSize = 65535; // If you want to whole point cloud
+    //public int maxChunkSize = 1361; // If you only want a small portion of the points
     public float pointSize = 0.005f;
     public GameObject pointCloudElem;
     public Material pointCloudMaterial;
+
     public int maxNumElems = 1;
 
     public WebRTCManager webRTCManager;
-    private List<GameObject> pointCloudObjects = new List<GameObject>();
 
     void Start()
     {
+        //elems = new List<GameObject>();
         UpdatePointSize();
-
-        if (webRTCManager == null)
-        {
-            webRTCManager = FindObjectOfType<WebRTCManager>();
-            if (webRTCManager == null)
-            {
-                Debug.LogError("WebRTCManager not found!");
-                return;
-            }
-        }
     }
 
     void Update()
@@ -46,52 +38,125 @@ public class PointCloudRenderer : MonoBehaviour
 
     public void Render(float[] arrVertices, byte[] arrColors)
     {
-        if (arrVertices == null || arrColors == null) return;
+        int nPoints, nChunks;
+        if (arrVertices == null || arrColors == null)
+        {
+            nPoints = 0;
+            nChunks = 0;
+        }
+        else
+        {
+            nPoints = arrVertices.Length / 3;
+            nChunks = 1 + nPoints / maxChunkSize;
+        }
 
-        int nPoints = arrVertices.Length / 3;
-        int nChunks = Mathf.Min(1 + nPoints / maxChunkSize, maxNumElems);
+        nChunks = Mathf.Min(nChunks, maxNumElems);
 
-        while (pointCloudObjects.Count < nChunks)
-            AddElem();
-        while (pointCloudObjects.Count > nChunks)
-            RemoveElem();
+        if (webRTCManager.networkObjects.Count < nChunks)
+            AddElems(nChunks - webRTCManager.networkObjects.Count);
+        if (webRTCManager.networkObjects.Count > nChunks)
+            RemoveElems(webRTCManager.networkObjects.Count - nChunks);
 
         int offset = 0;
         for (int i = 0; i < nChunks; i++)
         {
-            int nPointsToRender = Mathf.Min(maxChunkSize, nPoints - offset);
-            Vector3[] points = new Vector3[nPointsToRender];
-            Color[] colors = new Color[nPointsToRender];
+            int nPointsToRender = System.Math.Min(maxChunkSize, nPoints - offset);
 
-            for (int j = 0; j < nPointsToRender; j++)
+            Vector3[] points = new Vector3[nPoints];
+            int[] indices = new int[nPoints];
+            Color[] colors = new Color[nPoints];
+
+            for (int j = 0; j < nPoints; j++)
             {
-                int ptIdx = 3 * (offset + j);
-                points[j] = new Vector3(arrVertices[ptIdx], arrVertices[ptIdx + 1], -arrVertices[ptIdx + 2]);
-                colors[j] = new Color(arrColors[ptIdx] / 256f, arrColors[ptIdx + 1] / 256f, arrColors[ptIdx + 2] / 256f, 1.0f);
+                int ptIdx = 3 * j;
+
+                points[j] = new Vector3(arrVertices[ptIdx + 0], arrVertices[ptIdx + 1], -arrVertices[ptIdx + 2]);
+                indices[j] = j;
+                colors[j] = new Color((float)arrColors[ptIdx + 0] / 256.0f, (float)arrColors[ptIdx + 1] / 256.0f, (float)arrColors[ptIdx + 2] / 256.0f, 1.0f);
             }
 
-            Mesh mesh = new Mesh { vertices = points, colors = colors };
-            mesh.SetIndices(Enumerable.Range(0, points.Length).ToArray(), MeshTopology.Points, 0);
+            // Thin the point cloud
+            List<Vector3> newPoints = new List<Vector3>();
+            List<Color> newColors = new List<Color>();
 
-            pointCloudObjects[i].GetComponent<MeshFilter>().mesh = mesh;
+            //float voxelSize = 0.02f;
+
+            //VoxelDownsample(points.ToList(), colors.ToList(), ref newPoints, ref newColors, voxelSize);
+            //Debug.Log("Original points: " + points.Length + ", new points: " + newPoints.Count);
+
+            //ElemRenderer renderer = photonFusionManager.networkObjects[i].GetComponent<ElemRenderer>();
+            //renderer.TriggerMeshUpdate(newPoints.Count, newColors.Count, newPoints, newColors);
+
             offset += nPointsToRender;
         }
     }
 
-    void AddElem()
+    void AddElems(int nElems)
     {
-        GameObject newElem = Instantiate(pointCloudElem, transform);
-        newElem.transform.localPosition = Vector3.zero;
-        newElem.transform.localRotation = Quaternion.identity;
-        pointCloudObjects.Add(newElem);
+        for (int i = 0; i < nElems; i++)
+        {
+            //GameObject newElem = GameObject.Instantiate(pointCloudElem);
+            //newElem.transform.parent = transform;
+            //newElem.transform.localPosition = new Vector3(0.0f, 0.0f, 0.0f);
+            //newElem.transform.localRotation = Quaternion.identity;
+            //newElem.transform.localScale = new Vector3(1.0f, 1.0f, 1.0f);
+
+            //elems.Add(newElem);
+
+            webRTCManager.SpawnNetworkObject(pointCloudElem, new Vector3(0.0f, 0.0f, 1.0f), Quaternion.identity);
+        }
     }
 
-    void RemoveElem()
+    void RemoveElems(int nElems)
     {
-        if (pointCloudObjects.Count > 0)
+        //for (int i = 0; i < nElems; i++)
+        //{
+        //    Destroy(elems[0]);
+        //    elems.Remove(elems[0]);
+        //}
+
+        webRTCManager.DestroyNetworkObjects(nElems);
+    }
+
+    public void VoxelDownsample(List<Vector3> originalPoints, List<Color> originalColors, ref List<Vector3> newPoints, ref List<Color> newColors, float voxelSize)
+    {
+        Dictionary<Vector3Int, List<(Vector3, Color)>> voxelMap = new Dictionary<Vector3Int, List<(Vector3, Color)>>();
+
+        for (int i = 0; i < originalPoints.Count; i++)
         {
-            Destroy(pointCloudObjects[0]);
-            pointCloudObjects.RemoveAt(0);
+            Vector3 point = originalPoints[i];
+            Color color = originalColors[i];
+
+            Vector3Int voxelKey = new Vector3Int(
+                Mathf.FloorToInt(point.x / voxelSize),
+                Mathf.FloorToInt(point.y / voxelSize),
+                Mathf.FloorToInt(point.z / voxelSize)
+            );
+
+            if (!voxelMap.ContainsKey(voxelKey))
+                voxelMap[voxelKey] = new List<(Vector3, Color)>();
+
+            voxelMap[voxelKey].Add((point, color));
+        }
+
+        // Compute the average position and color for each voxel
+        foreach (var voxel in voxelMap)
+        {
+            Vector3 avgPosition = Vector3.zero;
+            Color avgColor = Color.black;
+            int count = voxel.Value.Count;
+
+            foreach (var (pos, col) in voxel.Value)
+            {
+                avgPosition += pos;
+                avgColor += col; // Convert Color to Vector4 for addition
+            }
+
+            avgPosition /= count;
+            avgColor /= count; // Averaging the color
+
+            newPoints.Add(avgPosition);
+            newColors.Add(avgColor);
         }
     }
 }

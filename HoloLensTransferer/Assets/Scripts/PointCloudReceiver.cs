@@ -9,7 +9,6 @@ public class PointCloudReceiver : MonoBehaviour
 {
     TcpClient socket;
     public int port = 48002;
-    public PhotonFusionManager PhotonFusionManager;
 
     PointCloudRenderer pointCloudRenderer;
     bool bReadyForNextFrame = true;
@@ -26,7 +25,7 @@ public class PointCloudReceiver : MonoBehaviour
 
     void Update()
     {
-        if (!bConnected || !PhotonFusionManager.currentPlayerConnected)
+        if (!bConnected)
             return;
 
         if (bReadyForNextFrame)

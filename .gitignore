@@ -12,6 +12,7 @@
 [Mm]emoryCaptures/
 [Ss]treamingAssets/InitializableAssets/
 *[Aa]sset[Vv]ersion/
+**/UserSettings/
 
 # Uncomment if your Unity version has /Packages/com.unity.textmeshpro as a separate package
 # TextMesh Pro specific files (Optional)
@@ -149,3 +150,7 @@ StoreKey.pfx
 .idea/
 .idea_modules/
 .idea_*
+
+# Ignore Photon files
+**/Assets/Photon/
+**/Assets/Photon/**/Assemblies/

@@ -204,6 +204,7 @@ GameObject:
   m_Component:
   - component: {fileID: 305562879}
   - component: {fileID: 305562880}
+  - component: {fileID: 305562881}
   m_Layer: 0
   m_Name: PhotonFusionManager
   m_TagString: Untagged
@@ -235,9 +236,28 @@ MonoBehaviour:
   m_GameObject: {fileID: 305562878}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f9d0864e14d6b3d4d8ee83fe95ffa82b, type: 3}
+  m_Script: {fileID: 11500000, guid: 059e543e0f75043b39ff4870ca88b2ad, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  isSender: 0
+--- !u!114 &305562881
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 305562878}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  SortKey: 3438582683
+  ObjectInterest: 1
+  Flags: 262145
+  NestedObjects: []
+  NetworkedBehaviours:
+  - {fileID: 305562880}
 --- !u!1 &683017650
 GameObject:
   m_ObjectHideFlags: 0
@@ -321,7 +341,19 @@ MonoBehaviour:
       m_Calls: []
   PlayerJoined:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 305562880}
+        m_TargetAssemblyTypeName: WebRTCManager, Assembly-CSharp
+        m_MethodName: PlayerJoined
+        m_Mode: 0
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 1
   PlayerLeft:
     m_PersistentCalls:
       m_Calls: []

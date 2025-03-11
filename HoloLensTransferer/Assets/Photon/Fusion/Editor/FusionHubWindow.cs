@@ -57,6 +57,9 @@ namespace Fusion.Editor {
 
       GUI.skin = FusionHubSkin;
 
+      FusionGlobalScriptableObjectUtils.EnsureAssetExists<PhotonAppSettings>();
+      FusionGlobalScriptableObjectUtils.EnsureAssetExists<NetworkProjectConfigAsset>();
+
       _windowPosition = this.position.position;
 
       // full window wrapper
@@ -249,13 +252,7 @@ namespace Fusion.Editor {
       private static void EnsureAssetExists() {
         if (!PhotonAppSettings.TryGetGlobal(out var global) || global.AppSettings.AppIdFusion == null) {
           FusionEditorLog.Trace($"Opening HUB due to missing settings.");
-          EditorApplication.delayCall += () => {
-            // Check if it is running in batch mode & ignore
-            if (UnityEditorInternal.InternalEditorUtility.inBatchMode) { return; }
-
-            // otherwise, open the window
-            Open();
-          };
+          EditorApplication.delayCall += () => { Open(); };
         }
       }
     }

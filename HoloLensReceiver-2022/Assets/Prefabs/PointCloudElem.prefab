@@ -93,7 +93,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1002025039999346}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5fe88d387a3864240bca3acfa53ca38b, type: 3}
   m_Name: 
@@ -115,7 +115,6 @@ MonoBehaviour:
   Flags: 262145
   NestedObjects: []
   NetworkedBehaviours:
-  - {fileID: 114123662589951318}
   - {fileID: 5513085650171893445}
 --- !u!1 &1787503178510128353
 GameObject:
@@ -238,10 +237,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fcc707840eb207c41955e6a1655ed7c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  serverIP: 127.0.0.1
-  port: 48004
   targetRenderer: {fileID: 9164001801940079612}
-  photonFusionManager: {fileID: 0}
+  webRTCManager: {fileID: 0}
 --- !u!114 &2820901727056358228
 MonoBehaviour:
   m_ObjectHideFlags: 0

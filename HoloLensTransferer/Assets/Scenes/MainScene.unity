@@ -286,8 +286,8 @@ MonoBehaviour:
   PlayerJoined:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1753297905}
-        m_TargetAssemblyTypeName: PhotonFusionManager, Assembly-CSharp
+      - m_Target: {fileID: 1753297909}
+        m_TargetAssemblyTypeName: WebRTCManager, Assembly-CSharp
         m_MethodName: PlayerJoined
         m_Mode: 0
         m_Arguments:
@@ -325,7 +325,7 @@ MonoBehaviour:
   OnReliableData:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1753297905}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: PhotonFusionManager, Assembly-CSharp
         m_MethodName: OnReliableDataReceived
         m_Mode: 0
@@ -340,7 +340,7 @@ MonoBehaviour:
   OnReliableProgress:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1753297905}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: PhotonFusionManager, Assembly-CSharp
         m_MethodName: ReliableData
         m_Mode: 1
@@ -531,10 +531,11 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1753297904}
-  - component: {fileID: 1753297905}
   - component: {fileID: 1753297906}
   - component: {fileID: 1753297907}
   - component: {fileID: 1753297908}
+  - component: {fileID: 1753297909}
+  - component: {fileID: 1753297910}
   m_Layer: 0
   m_Name: PhotonFusionManager
   m_TagString: Untagged
@@ -557,20 +558,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1753297905
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1753297903}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a9aef8739ce5c02439da85e312d22939, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  currentPlayerConnected: 0
-  networkObjects: []
 --- !u!114 &1753297906
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -584,7 +571,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   port: 48002
-  PhotonFusionManager: {fileID: 1753297905}
 --- !u!114 &1753297907
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -630,7 +616,38 @@ MonoBehaviour:
   pointCloudElem: {fileID: 1002025039999346, guid: e744b53116b889a4e8cce0fb232895c9, type: 3}
   pointCloudMaterial: {fileID: 2100000, guid: 30c9fadcd170de64f8c8e51e643d3b69, type: 2}
   maxNumElems: 1
-  photonFusionManager: {fileID: 1753297905}
+  webRTCManager: {fileID: 1753297909}
+--- !u!114 &1753297909
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1753297903}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 887674f8bd5ea4817801255afe8a8861, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  isSender: 1
+--- !u!114 &1753297910
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1753297903}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  SortKey: 4056330477
+  ObjectInterest: 1
+  Flags: 131073
+  NestedObjects: []
+  NetworkedBehaviours:
+  - {fileID: 1753297909}
 --- !u!1 &1779681359
 GameObject:
   m_ObjectHideFlags: 0
