@@ -28,6 +28,6 @@ public class DocumentWebRTC : MonoBehaviour
     // Event handlers
     private void OnMeshDataReceived(int nVertices, int nTriangles, Vector3[] vertices, List<int> triangles)
     {
-        elemRenderer.TriggerMeshUpdate(nVertices, nTriangles, vertices, triangles);
+        //elemRenderer.TriggerMeshUpdate(nVertices, nTriangles, vertices, triangles);
     }
 }

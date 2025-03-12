@@ -76,16 +76,18 @@ public class PointCloudRenderer : MonoBehaviour
             }
 
             // Thin the point cloud
-            List<Vector3> newPoints = new List<Vector3>();
-            List<Color> newColors = new List<Color>();
+            //List<Vector3> newPoints = new List<Vector3>();
+            //List<Color> newColors = new List<Color>();
 
             //float voxelSize = 0.02f;
 
             //VoxelDownsample(points.ToList(), colors.ToList(), ref newPoints, ref newColors, voxelSize);
             //Debug.Log("Original points: " + points.Length + ", new points: " + newPoints.Count);
 
-            //ElemRenderer renderer = photonFusionManager.networkObjects[i].GetComponent<ElemRenderer>();
-            //renderer.TriggerMeshUpdate(newPoints.Count, newColors.Count, newPoints, newColors);
+            //ElemRenderer renderer = webRTCManager.networkObjects[i].GetComponent<ElemRenderer>();
+            //renderer.TriggerMeshUpdate(points.Length, colors.Length, points, colors);
+
+            webRTCManager.SendPointCloud(points, colors);
 
             offset += nPointsToRender;
         }
@@ -103,7 +105,7 @@ public class PointCloudRenderer : MonoBehaviour
 
             //elems.Add(newElem);
 
-            webRTCManager.SpawnNetworkObject(pointCloudElem, new Vector3(0.0f, 0.0f, 1.0f), Quaternion.identity);
+            webRTCManager.SpawnNetworkObject(pointCloudElem, new Vector3(0.0f, 0.0f, 0.0f), Quaternion.identity);
         }
     }
 

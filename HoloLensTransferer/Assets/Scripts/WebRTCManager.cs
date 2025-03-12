@@ -2,26 +2,34 @@ using Fusion;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using Unity.WebRTC;
 using UnityEngine;
 
 public class WebRTCManager : NetworkBehaviour
 {
     private RTCPeerConnection peerConnection;
-    private RTCDataChannel dataChannel;
+    private RTCDataChannel documentChannel;
+    private RTCDataChannel pointCloudChannel;
     private RTCConfiguration rtcConfig;
 
-    // Room management
     private NetworkRunner networkRunner;
-    public bool isSender = true; // true if this object is the transferer (sending the file)
+    public bool isSender = true;
+
     private byte[] documentData;
     private bool hasNewDocument = false;
 
-    private bool isWebRTCInitialized = false; // Flag to ensure WebRTC initialization
-    private bool isFusionInitialized = false; // Flag to track Fusion network initialization
+    private Vector3[] receivedVertices;
+    private Color[] receivedColors;
+    private bool hasNewPointCloud = false;
+
+    private bool isWebRTCInitialized = false;
+    private bool isFusionInitialized = false;
 
     private PlayerRef currentPlayer;
     public List<NetworkObject> networkObjects = new List<NetworkObject>();
+
+    private const float POSITION_SCALE = 1000f; // Scale for converting float to short
 
     // Initialization of WebRTC
     void OnEnable()
@@ -31,9 +39,13 @@ public class WebRTCManager : NetworkBehaviour
 
     private void Update()
     {
-        if (dataChannel != null)
+        if (documentChannel != null)
         {
-            Debug.Log(dataChannel.ReadyState);
+            Debug.Log($"DocumentChannel State: {documentChannel.ReadyState}");
+        }
+        if (pointCloudChannel != null)
+        {
+            Debug.Log($"PointCloudChannel State: {pointCloudChannel.ReadyState}");
         }
     }
 
@@ -103,10 +115,17 @@ public class WebRTCManager : NetworkBehaviour
             }
         };
 
-        dataChannel = peerConnection.CreateDataChannel("documentTransfer");
-        dataChannel.OnOpen += () => Debug.Log("DataChannel Opened.");
-        dataChannel.OnClose += () => Debug.Log("DataChannel Closed.");
-        dataChannel.OnMessage += (message) => HandleDataChannelMessage(message);
+        // Document Transfer Channel
+        documentChannel = peerConnection.CreateDataChannel("documentTransfer");
+        documentChannel.OnOpen += () => Debug.Log("Document Channel Opened.");
+        documentChannel.OnClose += () => Debug.Log("Document Channel Closed.");
+        documentChannel.OnMessage += (message) => HandleDocumentMessage(message);
+
+        // Point Cloud Transfer Channel
+        pointCloudChannel = peerConnection.CreateDataChannel("pointCloudTransfer");
+        pointCloudChannel.OnOpen += () => Debug.Log("Point Cloud Channel Opened.");
+        pointCloudChannel.OnClose += () => Debug.Log("Point Cloud Channel Closed.");
+        pointCloudChannel.OnMessage += (message) => HandlePointCloudMessage(message);
 
         isWebRTCInitialized = true;
 
@@ -215,12 +234,6 @@ public class WebRTCManager : NetworkBehaviour
         RpcSendIceCandidate(candidate.Candidate, candidate.SdpMid, (int)candidate.SdpMLineIndex);
     }
 
-    private void HandleDataChannelMessage(byte[] data)
-    {
-        // Handle the received file data
-        Debug.Log($"Received file data of size {data.Length} bytes");
-    }
-
     // Fusion RPCs to send signaling data
     [Rpc(RpcSources.All, RpcTargets.All)]
     public void RpcSendSdpOffer(string offerSdp)
@@ -263,19 +276,97 @@ public class WebRTCManager : NetworkBehaviour
         peerConnection.AddIceCandidate(iceCandidate);
     }
 
-    // Method to send the document
+    private void HandleDocumentMessage(byte[] data)
+    {
+        Debug.Log($"Received document of size {data.Length} bytes");
+        //documentData = data;
+        //hasNewDocument = true;
+    }
+
+    private void HandlePointCloudMessage(byte[] data)
+    {
+        Debug.Log("Received point cloud data.");
+        DeserializePointCloud(data, out receivedVertices, out receivedColors);
+        //hasNewPointCloud = true;
+    }
+
     public void SendDocument(byte[] imageData)
     {
-        if (dataChannel != null && dataChannel.ReadyState == RTCDataChannelState.Open)
+        if (documentChannel != null && documentChannel.ReadyState == RTCDataChannelState.Open)
         {
-            Debug.Log("Sending document!");
+            Debug.Log("Sending document...");
+            documentChannel.Send(imageData);
             documentData = imageData;
             hasNewDocument = true;
-            dataChannel.Send(imageData); ;
         }
-        else
+    }
+
+    public void SendPointCloud(Vector3[] vertices, Color[] colors)
+    {
+        if (pointCloudChannel != null && pointCloudChannel.ReadyState == RTCDataChannelState.Open)
         {
-            Debug.LogError("DataChannel not open or not initialized.");
+            byte[] data = SerializePointCloud(vertices, colors);
+            Debug.Log($"Sending point cloud with {vertices.Length} points. (Data size: " + data.Length + ")");
+            pointCloudChannel.Send(data);
+            receivedVertices = vertices;
+            receivedColors = colors;
+            hasNewPointCloud = true;
+        }
+    }
+
+    private byte[] SerializePointCloud(Vector3[] vertices, Color[] colors)
+    {
+        using (MemoryStream stream = new MemoryStream())
+        using (BinaryWriter writer = new BinaryWriter(stream))
+        {
+            writer.Write(vertices.Length); // Write number of points
+
+            // Write positions as shorts (scaled)
+            foreach (var vertex in vertices)
+            {
+                writer.Write((short)(vertex.x * POSITION_SCALE));
+                writer.Write((short)(vertex.y * POSITION_SCALE));
+                writer.Write((short)(vertex.z * POSITION_SCALE));
+            }
+
+            // Write colors as RGB bytes (removing alpha)
+            foreach (var color in colors)
+            {
+                writer.Write((byte)(color.r * 255));
+                writer.Write((byte)(color.g * 255));
+                writer.Write((byte)(color.b * 255));
+            }
+
+            return stream.ToArray();
+        }
+    }
+
+    private void DeserializePointCloud(byte[] data, out Vector3[] vertices, out Color[] colors)
+    {
+        using (MemoryStream stream = new MemoryStream(data))
+        using (BinaryReader reader = new BinaryReader(stream))
+        {
+            int length = reader.ReadInt32();
+            vertices = new Vector3[length];
+            colors = new Color[length];
+
+            // Read positions as shorts (scaled back to floats)
+            for (int i = 0; i < length; i++)
+            {
+                float x = reader.ReadInt16() / POSITION_SCALE;
+                float y = reader.ReadInt16() / POSITION_SCALE;
+                float z = reader.ReadInt16() / POSITION_SCALE;
+                vertices[i] = new Vector3(x, y, z);
+            }
+
+            // Read colors as RGB bytes (normalized to float)
+            for (int i = 0; i < length; i++)
+            {
+                float r = reader.ReadByte() / 255f;
+                float g = reader.ReadByte() / 255f;
+                float b = reader.ReadByte() / 255f;
+                colors[i] = new Color(r, g, b, 1f); // Default alpha to 1
+            }
         }
     }
 
@@ -290,12 +381,28 @@ public class WebRTCManager : NetworkBehaviour
         return documentData;
     }
 
+    public bool HasNewPointCloud()
+    {
+        return hasNewPointCloud;
+    }
+
+    public (Vector3[], Color[]) GetReceivedPointCloud()
+    {
+        hasNewPointCloud = false;
+        return (receivedVertices, receivedColors);
+    }
+
     private void OnDestroy()
     {
         // Cleanup
-        if (dataChannel != null)
+        if (documentChannel != null)
         {
-            dataChannel.Close();
+            documentChannel.Close();
+        }
+
+        if (pointCloudChannel != null)
+        {
+            pointCloudChannel.Close();
         }
 
         if (peerConnection != null)
