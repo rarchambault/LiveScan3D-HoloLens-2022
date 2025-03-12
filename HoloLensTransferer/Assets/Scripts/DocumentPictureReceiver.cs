@@ -5,7 +5,6 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
-using Unity.WebRTC;
 using UnityEngine;
 
 public class DocumentPictureReceiver : NetworkBehaviour
@@ -13,8 +12,10 @@ public class DocumentPictureReceiver : NetworkBehaviour
     public string serverIP = "127.0.0.1";
     public int port = 48004;
     public Renderer targetRenderer;
-    public WebRTCManager webRTCManager;
+    public float maxImageSize = 3.0f;
+    public float minImageSize = 1.0f;
 
+    private WebRTCManager webRTCManager;
     private TcpListener listener;
     private Thread listenerThread;
     private bool isRunning = false;
@@ -22,18 +23,19 @@ public class DocumentPictureReceiver : NetworkBehaviour
     private const float IMAGE_TIMEOUT = 10f;
 
     private byte[] receivedImageData;
-    private int newImageWidth;
-    private int newImageHeight;
     [Networked] private int receivedImageWidth { get; set; }
     [Networked] private int receivedImageHeight { get; set; }
+    private int newWidth = 0;
+    private int newHeight = 0;
 
-    private const float maxImageSize = 0.1f;
+    private float xScaleUnitWidth;
+    private float zScaleUnitHeight;
     private const float pixelToMeter = 0.26f / 1000f; // Convert pixels to meters
     private bool isProcessingImage = false;
 
     private readonly object lockObject = new object(); // Ensure thread safety
 
-    void Start()
+    public override void Spawned()
     {
         if (targetRenderer == null)
         {
@@ -51,10 +53,24 @@ public class DocumentPictureReceiver : NetworkBehaviour
             return;
         }
 
-        isRunning = true;
-        listenerThread = new Thread(ListenForImages);
-        listenerThread.IsBackground = true;
-        listenerThread.Start();
+        // Get the current world-space width and height of the plane
+        float currentWorldWidth = targetRenderer.localBounds.size.x;
+        float currentWorldHeight = targetRenderer.localBounds.size.z;
+
+        // Get the current local scale
+        Vector3 localScale = targetRenderer.transform.localScale;
+
+        // Compute the unit local x-scale and z-scale
+        xScaleUnitWidth = (1.0f * localScale.x) / currentWorldWidth;
+        zScaleUnitHeight = (1.0f * localScale.z) / currentWorldHeight;
+
+        if (Object.HasStateAuthority) // Only the host should receive images
+        {
+            isRunning = true;
+            listenerThread = new Thread(ListenForImages);
+            listenerThread.IsBackground = true;
+            listenerThread.Start();
+        }
     }
 
     void ListenForImages()
@@ -71,18 +87,22 @@ public class DocumentPictureReceiver : NetworkBehaviour
                 using (NetworkStream stream = client.GetStream())
                 using (BinaryReader reader = new BinaryReader(stream))
                 {
+                    // Read image dimensions first
                     int height = reader.ReadInt32();
                     int width = reader.ReadInt32();
+
+                    // Read image size
                     int imageSize = reader.ReadInt32();
                     byte[] imageData = reader.ReadBytes(imageSize);
 
                     if (imageData.Length > 0)
                     {
+                        // Store data safely to be processed in the main thread
                         lock (lockObject)
                         {
                             receivedImageData = imageData;
-                            newImageWidth = width;
-                            newImageHeight = height;
+                            newWidth = width;
+                            newHeight = height;
                         }
                     }
                 }
@@ -96,49 +116,55 @@ public class DocumentPictureReceiver : NetworkBehaviour
 
     void Update()
     {
+        // Process image only on the main thread
         if (receivedImageData != null && !isProcessingImage)
         {
             isProcessingImage = true;
-            lock (lockObject)
+
+            if (Object.HasStateAuthority)
             {
-                SendImageData(receivedImageData, newImageWidth, newImageHeight);
-                receivedImageData = null;
+                lock (lockObject) // Ensure thread safety
+                {
+                    SendImageData(receivedImageData);
+                    receivedImageData = null;
+                    // Update networked properties for width and height (ensuring they are synchronized **after** data transmission)
+                    receivedImageWidth = newWidth;
+                    receivedImageHeight = newHeight;
+                }
             }
         }
 
+        // Check that the image was received here and fully sent through WebRTC
+        if (isProcessingImage && webRTCManager.HasNewDocument())
+        {
+            ApplyTexture();
+            isProcessingImage = false;
+        }
+
+        // Hide renderer if no new image has been received in the timeout period
         if (Time.time - lastImageTime > IMAGE_TIMEOUT && targetRenderer.enabled)
         {
             targetRenderer.enabled = false;
             Debug.Log("No new image in over " + IMAGE_TIMEOUT + " seconds, hiding display");
         }
-
-        if (isProcessingImage)
-        {
-            StartCoroutine(ApplyTexture(receivedImageWidth, receivedImageHeight));
-            isProcessingImage = false;
-        }
     }
 
-    private void SendImageData(byte[] imageData, int width, int height)
+    private void SendImageData(byte[] imageData)
     {
         Debug.Log("Sending image data via WebRTCManager...");
 
+        // Send the image using your WebRTCManager's SendDocument function
         webRTCManager.SendDocument(imageData);
-        receivedImageWidth = width;
-        receivedImageHeight = height;
-
-        Debug.Log($"Updated properties: Width={receivedImageWidth}, Height={receivedImageHeight}");
     }
 
-    IEnumerator ApplyTexture(int width, int height)
+    private void ApplyTexture()
     {
-        yield return null;
+        byte[] imageData = webRTCManager.GetReceivedDocument(); // Get image data from WebRTCManager
 
-        byte[] imageData = webRTCManager.GetReceivedDocument();
         if (imageData == null || imageData.Length == 0)
         {
             Debug.LogError("Failed to retrieve image data from WebRTCManager.");
-            yield break;
+            return;
         }
 
         Texture2D texture = new Texture2D(2, 2);
@@ -149,7 +175,8 @@ public class DocumentPictureReceiver : NetworkBehaviour
             targetRenderer.enabled = true;
             lastImageTime = Time.time;
 
-            AdjustRendererScale(width, height);
+            // Scale the renderer plane to match the aspect ratio
+            AdjustRendererScale();
         }
         else
         {
@@ -157,23 +184,28 @@ public class DocumentPictureReceiver : NetworkBehaviour
         }
     }
 
-    private void AdjustRendererScale(int imageWidth, int imageHeight)
+    private void AdjustRendererScale()
     {
-        float realWidth = imageWidth * pixelToMeter;
-        float realHeight = imageHeight * pixelToMeter;
+        float aspectRatio = (float)receivedImageWidth / (float)receivedImageHeight;
+        float realWidth = (float)receivedImageWidth * pixelToMeter;
+        float realHeight = (float)receivedImageHeight * pixelToMeter;
 
-        float scaleFactor = Mathf.Min(maxImageSize / realWidth, maxImageSize / realHeight, 1.0f);
+        realWidth = Mathf.Clamp(realWidth, minImageSize, maxImageSize);
+        realHeight = realWidth / aspectRatio;
+
+        realHeight = Mathf.Clamp(realHeight, minImageSize, maxImageSize);
+        realWidth = realHeight * aspectRatio;
 
         Vector3 newScale = targetRenderer.transform.localScale;
-        newScale.x = realWidth * scaleFactor;
-        newScale.y = realHeight * scaleFactor;
+        newScale.x = realWidth * xScaleUnitWidth;  // Width
+        newScale.z = realHeight * zScaleUnitHeight; // Height
 
         targetRenderer.transform.localScale = newScale;
 
-        Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.y}m (Aspect Ratio: {(float)imageWidth / imageHeight})");
+        Debug.Log($"Adjusted Renderer Scale to: {newScale.x}m x {newScale.z}m (Aspect Ratio: {(float)receivedImageWidth / receivedImageHeight})");
     }
 
-    private void OnDestroy()
+    public override void Despawned(NetworkRunner runner, bool hasState)
     {
         isRunning = false;
         listener?.Stop();
