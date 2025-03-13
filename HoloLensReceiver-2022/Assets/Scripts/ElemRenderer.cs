@@ -1,13 +1,13 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using Unity.WebRTC;
 using UnityEngine;
-using static Fusion.NetworkObjectBaker.TransformPath;
 
 public class ElemRenderer : MonoBehaviour
 {
     private Mesh mesh;
     private WebRTCManager webRTCManager;
+
+    private float timeSinceLastRender = 0.0f;
 
     void Start()
     {
@@ -25,6 +25,8 @@ public class ElemRenderer : MonoBehaviour
 
     void Update()
     {
+        timeSinceLastRender += Time.deltaTime;
+
         if (webRTCManager.HasNewPointCloud())
         {
             Vector3[] vertices;
@@ -45,6 +47,9 @@ public class ElemRenderer : MonoBehaviour
             mesh.colors = colors;
             mesh.SetIndices(indices, MeshTopology.Points, 0);
             GetComponent<MeshFilter>().mesh = mesh;
+
+            Debug.Log("Last FPS: " + (float)1 / timeSinceLastRender);
+            timeSinceLastRender = 0.0f;
         }
     }
 }

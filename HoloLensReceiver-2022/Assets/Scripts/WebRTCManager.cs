@@ -1,16 +1,18 @@
 using Fusion;
+using Microsoft.MixedReality.WebRTC;
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
-using Unity.WebRTC;
+using System.Threading.Tasks;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class WebRTCManager : NetworkBehaviour
 {
-    private RTCPeerConnection peerConnection;
-    private RTCDataChannel documentChannel;
-    private RTCDataChannel pointCloudChannel;
-    private RTCConfiguration rtcConfig;
+    private PeerConnection peerConnection;
+    private DataChannel documentChannel;
+    private DataChannel pointCloudChannel;
 
     // Room management
     private NetworkRunner networkRunner;
@@ -27,7 +29,6 @@ public class WebRTCManager : NetworkBehaviour
 
     private const float POSITION_SCALE = 1000f;
 
-    // Initialization
     void OnEnable()
     {
         StartCoroutine(WaitForFusionConnection());
@@ -47,53 +48,63 @@ public class WebRTCManager : NetworkBehaviour
             yield return null;
         }
 
-        rtcConfig = new RTCConfiguration
-        {
-            iceServers = new[] { new RTCIceServer { urls = new[] { "stun:stun.l.google.com:19302" } } }
-        };
-
         InitializeWebRTC();
     }
 
-    private void InitializeWebRTC()
+    private async void InitializeWebRTC()
     {
-        peerConnection = new RTCPeerConnection(ref rtcConfig);
+        Debug.Log("Initializing WebRTC...");
 
-        peerConnection.OnIceCandidate = candidate =>
+        var config = new PeerConnectionConfiguration
         {
-            if (candidate != null)
+            IceServers = new List<IceServer>
             {
-                Debug.Log($"Sending ICE Candidate: {candidate.Candidate}");
-                if (networkRunner.IsSceneAuthority)
-                {
-                    SendIceCandidate(candidate);
-                }
+                new IceServer { Urls = { "stun:stun.l.google.com:19302" } }
             }
         };
 
-        peerConnection.OnDataChannel = channel =>
-        {
-            if (channel.Label == "documentTransfer")
-            {
-                documentChannel = channel;
-                documentChannel.OnOpen += () => Debug.Log("Document DataChannel Opened.");
-                documentChannel.OnClose += () => Debug.Log("Document DataChannel Closed.");
-                documentChannel.OnMessage += HandleDocumentMessage;
-            }
-            else if (channel.Label == "pointCloudTransfer")
-            {
-                pointCloudChannel = channel;
-                pointCloudChannel.OnOpen += () => Debug.Log("Point Cloud DataChannel Opened.");
-                pointCloudChannel.OnClose += () => Debug.Log("Point Cloud DataChannel Closed.");
-                pointCloudChannel.OnMessage += HandlePointCloudMessage;
-            }
-        };
+        peerConnection = new PeerConnection();
+
+        // Initialize WebRTC with the provided config
+        await peerConnection.InitializeAsync(config);
+
+        // Register event handlers
+        peerConnection.LocalSdpReadytoSend += OnLocalSdpReadyToSend;
+        peerConnection.IceCandidateReadytoSend += OnIceCandidateReadyToSend;
+        peerConnection.DataChannelAdded += OnDataChannelAdded;
 
         isWebRTCInitialized = true;
-        Debug.Log("WebRTC initialized for receiver.");
+        Debug.Log("WebRTC initialized successfully.");
     }
 
-    // Handle incoming SDP offer and create an SDP answer
+    private void OnDataChannelAdded(DataChannel channel)
+    {
+        Debug.Log($"Data channel added: {channel.Label}");
+
+        if (channel.Label == "documentTransfer")
+        {
+            documentChannel = channel;
+            documentChannel.StateChanged += OnDocumentChannelStateChanged;
+            documentChannel.MessageReceived += HandleDocumentMessage;
+        }
+        else if (channel.Label == "pointCloudTransfer")
+        {
+            pointCloudChannel = channel;
+            pointCloudChannel.StateChanged += OnPointCloudChannelStateChanged;
+            pointCloudChannel.MessageReceived += HandlePointCloudMessage;
+        }
+    }
+
+    private void OnDocumentChannelStateChanged()
+    {
+        Debug.Log($"Document DataChannel state changed: {documentChannel.State}");
+    }
+
+    private void OnPointCloudChannelStateChanged()
+    {
+        Debug.Log($"Point Cloud DataChannel state changed: {pointCloudChannel.State}");
+    }
+
     public void OnReceivedSdpOffer(string offerSdp)
     {
         if (!isWebRTCInitialized || !isFusionInitialized)
@@ -102,103 +113,75 @@ public class WebRTCManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log("Received SDP offer. Creating answer...");
-        RTCSessionDescription offerDesc = new RTCSessionDescription
+        Debug.Log("Received SDP offer. Setting remote description...");
+
+        var offer = new SdpMessage
         {
-            type = RTCSdpType.Offer,
-            sdp = offerSdp
+            Type = SdpMessageType.Offer,
+            Content = offerSdp
         };
 
-        peerConnection.SetRemoteDescription(ref offerDesc);
-        StartCoroutine(CreateAnswer());
-    }
-
-    private IEnumerator CreateAnswer()
-    {
-        if (!isWebRTCInitialized || !isFusionInitialized)
+        peerConnection.SetRemoteDescriptionAsync(offer).ContinueWith(task =>
         {
-            Debug.LogError("WebRTC or Fusion not initialized. Cannot create answer.");
-            yield break;
-        }
-
-        var answerOp = peerConnection.CreateAnswer();
-        yield return answerOp;
-
-        var answerDesc = answerOp.Desc;
-        yield return peerConnection.SetLocalDescription(ref answerDesc);
-
-        Debug.Log("Sending SDP answer...");
-        SendSdpAnswer(answerDesc);
-    }
-
-    private void SendSdpAnswer(RTCSessionDescription answer)
-    {
-        if (!isWebRTCInitialized || !isFusionInitialized)
-        {
-            Debug.LogError("WebRTC or Fusion not initialized. Cannot send SDP answer.");
-            return;
-        }
-
-        RpcSendSdpAnswer(answer.sdp);
-    }
-
-    private void SendIceCandidate(RTCIceCandidate candidate)
-    {
-        if (!isWebRTCInitialized || !isFusionInitialized)
-        {
-            Debug.LogError("WebRTC or Fusion not initialized. Cannot send ICE candidate.");
-            return;
-        }
-
-        Debug.Log($"Sending ICE candidate: {candidate.Candidate}");
-
-        // Send full ICE candidate details
-        RpcSendIceCandidate(candidate.Candidate, candidate.SdpMid, (int)candidate.SdpMLineIndex);
-    }
-
-    // Fusion RPCs to receive signaling data
-    [Rpc(RpcSources.All, RpcTargets.All)]
-    public void RpcSendSdpOffer(string offerSdp)
-    {
-        Debug.Log("Received SDP Offer RPC.");
-        if (!isSender)
-        {
-            OnReceivedSdpOffer(offerSdp);
-        }
-    }
-
-    [Rpc(RpcSources.All, RpcTargets.All)]
-    public void RpcSendSdpAnswer(string answerSdp)
-    {
-        Debug.Log("Received SDP Answer RPC.");
-        if (isSender)
-        {
-            RTCSessionDescription answerDesc = new RTCSessionDescription
+            if (task.IsCompletedSuccessfully)
             {
-                type = RTCSdpType.Answer,
-                sdp = answerSdp
+                Debug.Log("Remote description set. Creating answer...");
+                peerConnection.CreateAnswer();
+            }
+            else
+            {
+                Debug.LogError("Failed to set remote description: " + task.Exception);
+            }
+        });
+    }
+
+    private void OnLocalSdpReadyToSend(SdpMessage message)
+    {
+        Debug.Log("Sending SDP message: " + message.Type);
+        RpcSendSdpMessage(message.Type == SdpMessageType.Offer ? "offer" : "answer", message.Content);
+    }
+
+    private void OnIceCandidateReadyToSend(IceCandidate candidate)
+    {
+        Debug.Log("Sending ICE Candidate...");
+        RpcSendIceCandidate(candidate.Content, candidate.SdpMid, candidate.SdpMlineIndex);
+    }
+
+    [Rpc(RpcSources.All, RpcTargets.All)]
+    public void RpcSendSdpMessage(string type, string sdp)
+    {
+        Debug.Log($"Received SDP {type} RPC.");
+
+        if (type == "offer" && !isSender)
+        {
+            OnReceivedSdpOffer(sdp);
+        }
+        else if (type == "answer" && isSender)
+        {
+            var answer = new SdpMessage
+            {
+                Type = SdpMessageType.Answer,
+                Content = sdp
             };
-            peerConnection.SetRemoteDescription(ref answerDesc);
+            peerConnection.SetRemoteDescriptionAsync(answer);
         }
     }
 
     [Rpc(RpcSources.All, RpcTargets.All)]
-    public void RpcSendIceCandidate(string candidate, string sdpMid, int sdpMLineIndex)
+    public void RpcSendIceCandidate(string candidateContent, string sdpMid, int sdpMlineIndex)
     {
         Debug.Log("Received ICE Candidate RPC.");
 
-        RTCIceCandidateInit iceCandidateInit = new RTCIceCandidateInit
+        IceCandidate candidate = new IceCandidate
         {
-            candidate = candidate,
-            sdpMid = sdpMid,
-            sdpMLineIndex = sdpMLineIndex
+            Content = candidateContent,
+            SdpMid = sdpMid,
+            SdpMlineIndex = sdpMlineIndex
         };
 
-        RTCIceCandidate iceCandidate = new RTCIceCandidate(iceCandidateInit);
-        peerConnection.AddIceCandidate(iceCandidate);
+        peerConnection.AddIceCandidate(candidate);
     }
 
-    // Handle incoming document data
     private void HandleDocumentMessage(byte[] data)
     {
         Debug.Log($"Received document data of size {data.Length} bytes");
@@ -206,7 +189,6 @@ public class WebRTCManager : NetworkBehaviour
         hasNewDocument = true;
     }
 
-    // Handle incoming point cloud data
     private void HandlePointCloudMessage(byte[] data)
     {
         Debug.Log($"Received point cloud data of size {data.Length} bytes");
@@ -223,7 +205,6 @@ public class WebRTCManager : NetworkBehaviour
             vertices = new Vector3[length];
             colors = new Color[length];
 
-            // Read positions as shorts (scaled back to floats)
             for (int i = 0; i < length; i++)
             {
                 float x = reader.ReadInt16() / POSITION_SCALE;
@@ -232,55 +213,25 @@ public class WebRTCManager : NetworkBehaviour
                 vertices[i] = new Vector3(x, y, z);
             }
 
-            // Read colors as RGB bytes (normalized to float)
             for (int i = 0; i < length; i++)
             {
                 float r = reader.ReadByte() / 255f;
                 float g = reader.ReadByte() / 255f;
                 float b = reader.ReadByte() / 255f;
-                colors[i] = new Color(r, g, b, 1f); // Default alpha to 1
+                colors[i] = new Color(r, g, b, 1f);
             }
         }
     }
 
-    // Method to check for new documents
-    public bool HasNewDocument()
-    {
-        return hasNewDocument;
-    }
+    public bool HasNewDocument() => hasNewDocument;
+    public byte[] GetReceivedDocument() { hasNewDocument = false; return documentData; }
 
-    public byte[] GetReceivedDocument()
-    {
-        hasNewDocument = false;
-        return documentData;
-    }
-
-    public bool HasNewPointCloud()
-    {
-        return hasNewPointCloud;
-    }
-
-    public (Vector3[], Color[]) GetReceivedPointCloud()
-    {
-        hasNewPointCloud = false;
-        return (receivedVertices, receivedColors);
-    }
+    public bool HasNewPointCloud() => hasNewPointCloud;
+    public (Vector3[], Color[]) GetReceivedPointCloud() { hasNewPointCloud = false; return (receivedVertices, receivedColors); }
 
     private void OnDestroy()
     {
-        if (documentChannel != null)
-        {
-            documentChannel.Close();
-        }
-
-        if (pointCloudChannel != null)
-        {
-            pointCloudChannel.Close();
-        }
-
-        if (peerConnection != null)
-        {
-            peerConnection.Close();
-        }
+        peerConnection?.Close();
+        peerConnection?.Dispose();
     }
 }

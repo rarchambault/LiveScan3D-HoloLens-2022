@@ -630,6 +630,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   isSender: 1
+  networkObjects: []
 --- !u!114 &1753297910
 MonoBehaviour:
   m_ObjectHideFlags: 0
